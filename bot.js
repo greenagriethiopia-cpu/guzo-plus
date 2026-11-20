@@ -1,76 +1,74 @@
 const { Telegraf, Markup } = require('telegraf');
-const bot = new Telegraf(process.env.BOT_TOKEN);
 
-// /start ትዕዛዝ ሲሰጥ አዝራሮችን ማሳየት
-bot.start((ctx) => {
-    ctx.reply(
-        '🚗 እንኳን ወደ ጉዞ ፕላስ (Guzo Plus) በደህና መጡ!\n\nእባክዎ የሚፈልጉትን ሚና ይምረጡ:',
-        Markup.inlineKeyboard([
-            [Markup.button.callback('👤 ተሳፋሪ (Passenger)', 'role_passenger')],
-            [Markup.button.callback('🚗 ሾፌር (Driver)', 'role_driver')]
-        ])
-    );
-});
+const botToken = process.env.BOT_TOKEN;
+if (!botToken) {
+  console.error('❌ BOT_TOKEN environment variable አልተገኘም!');
+  process.exit(1);
+}
 
-// ተሳፋሪ ሲመረጥ
-bot.action('role_passenger', async (ctx) => {
-    await ctx.answerCbQuery();
-    await ctx.reply('👤 የመነሻ እና የመድረሻ ቦታዎን ያስገቡ:');
-});
-
-// ሾፌር ሲመረጥ
-bot.action('role_driver', async (ctx) => {
-    await ctx.answerCbQuery();
-    await ctx.reply('🚗 የመኪናዎን ታርጋ ቁጥር ያስገቡ:');
-});
-
-// በአጭር ቁጥር 1 ወይም 2 ሲጻፍ
-bot.hears('1', (ctx) => {
-    ctx.reply('👤 የመነሻ እና የመድረሻ ቦታዎን ያስገቡ:');
-});
-
-bot.hears('2', (ctx) // የተጠቃሚዎችን ጊዜያዊ ሁኔታ ለማስቀመጥ
+const bot = new Telegraf(botToken);
 const userState = {};
 
-// ተሳፋሪ ሲመረጥ ወይም 1 ሲጻፍ
-bot.action('role_passenger', async (ctx) => {
-  await ctx.answerCbQuery();
+// /start ትዕዛዝ ሲመጣ አማራጮችን ማሳየት
+bot.start(async (ctx) => {
+  await ctx.reply(
+    '🚗 እንኳን ወደ ጉዞ ፕላስ (Guzo Plus) በደህና መጡ!\n\nእባክዎ የሚፈልጉትን ሚና ይምረጡ፡',
+    Markup.inlineKeyboard([
+      [Markup.button.callback('👤 ተሳፋሪ (Passenger)', 'role_passenger')],
+      [Markup.button.callback('🚗 ሹፌር (Driver)', 'role_driver')],
+    ])
+  );
+});
+
+// ተሳፋሪ ሲመረጥ (ቁልፍ ወይም 1)
+async function startPassengerFlow(ctx) {
   userState[ctx.from.id] = { role: 'passenger', step: 'pickup' };
   await ctx.reply('👤 የመነሻ ቦታዎን ያስገቡ (ለምሳሌ፡ ሳሪስ መገናኛ):');
-});
+}
 
-bot.hears('1', (ctx) => {
-  userState[ctx.from.id] = { role: 'passenger', step: 'pickup' };
-  ctx.reply('👤 የመነሻ ቦታዎን ያስገቡ (ለምሳሌ፡ ሳሪስ መገናኛ):');
-});
-
-// ሹፌር ሲመረጥ ወይም 2 ሲጻፍ
-bot.action('role_driver', async (ctx) => {
+bot.action('role_passenger', async (ctx) => {
   await ctx.answerCbQuery();
+  await startPassengerFlow(ctx);
+});
+
+bot.hears('1', async (ctx) => {
+  await startPassengerFlow(ctx);
+});
+
+// ሹፌር ሲመረጥ (ቁልፍ ወይም 2)
+async function startDriverFlow(ctx) {
   userState[ctx.from.id] = { role: 'driver', step: 'plate' };
   await ctx.reply('🚗 የመኪናዎን ታርጋ ቁጥር ያስገቡ:');
+}
+
+bot.action('role_driver', async (ctx) => {
+  await ctx.answerCbQuery();
+  await startDriverFlow(ctx);
 });
 
-bot.hears('2', (ctx) => {
-  userState[ctx.from.id] = { role: 'driver', step: 'plate' };
-  ctx.reply('🚗 የመኪናዎን ታርጋ ቁጥር ያስገቡ:');
+bot.hears('2', async (ctx) => {
+  await startDriverFlow(ctx);
 });
 
-// የጽሁፍ መልዕክቶችን ማስተናገድ
-bot.on('text', (ctx) => {
+// የጽሁፍ መልዕክቶችን በቅደም ተከተል ማስተናገድ
+bot.on('text', async (ctx) => {
   const text = ctx.message.text.trim();
   if (text.startsWith('/') || text === '1' || text === '2') return;
 
   const state = userState[ctx.from.id];
   if (!state) {
-    return ctx.reply('እባክዎ መጀመሪያ /start ይበሉ ወይም 1 (ተሳፋሪ) / 2 (ሹፌር) ይምረጡ።');
+    return ctx.reply(
+      'እባክዎ መጀመሪያ /start ይበሉ ወይም 1 (ተሳፋሪ) / 2 (ሹፌር) ይምረጡ።'
+    );
   }
 
   if (state.role === 'passenger') {
     if (state.step === 'pickup') {
       state.pickup = text;
       state.step = 'destination';
-      return ctx.reply(`📍 መነሻ፡ ${state.pickup}\nአሁን የመድረሻ ቦታዎን ያስገቡ:`);
+      return ctx.reply(
+        `📍 መነሻ፡ ${state.pickup}\nአሁን የመድረሻ ቦታዎን ያስገቡ:`
+      );
     }
 
     if (state.step === 'destination') {
@@ -78,10 +76,10 @@ bot.on('text', (ctx) => {
       state.step = 'done';
       return ctx.reply(
         `✅ የጉዞ ጥያቄዎ ተመዝግቧል!\n\n` +
-        `👤 ተሳፋሪ፡ ${ctx.from.first_name || 'ተጠቃሚ'}\n` +
-        `📍 መነሻ፡ ${state.pickup}\n` +
-        `🏁 መድረሻ፡ ${state.destination}\n\n` +
-        `አሽከርካሪ እየተፈለገ ነው...`
+          `👤 ተሳፋሪ፡ ${ctx.from.first_name || 'ተጠቃሚ'}\n` +
+          `📍 መነሻ፡ ${state.pickup}\n` +
+          `🏁 መድረሻ፡ ${state.destination}\n\n` +
+          `አሽከርካሪ እየተፈለገ ነው...`
       );
     }
   }
@@ -91,12 +89,21 @@ bot.on('text', (ctx) => {
     state.step = 'active';
     return ctx.reply(
       `✅ የሹፌር መረጃ ተመዝግቧል!\n\n` +
-      `🚗 ታርጋ፡ ${state.plate}\n` +
-      `አሁን የጉዞ ጥያቄዎችን ለመቀበል ዝግጁ ነዎት።`
+        `🚗 ታርጋ፡ ${state.plate}\n` +
+        `አሁን የጉዞ ጥያቄዎችን ለመቀበል ዝግጁ ነዎት።`
     );
   }
 });
 
+// ቦቱን ማስነሳት (ሰርቨሩን እንዳያቋርጥ በ catch መያዝ)
+bot
+  .launch()
+  .then(() => {
+    console.log('🤖🚗 የጉዞ ፕላስ ቦት በተሳካ ሁኔታ ተነስቷል!');
+  })
+  .catch((err) => {
+    console.error('❌ የTelegram ቦት ማስነሳት አልተቻለም:', err.message);
+  });
 
-bot.launch();
-console.log('🤖 የጉዞ ፕላስ አጭር እና የዘመነ ቦት በመስራት ላይ ይገኛል...');
+process.once('SIGINT', () => bot.stop('SIGINT'));
+process.once('SIGTERM', () => bot.stop('SIGTERM'));
