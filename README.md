@@ -11,3 +11,4 @@ app.get('/', (req, res) => {
 app.listen(PORT, () => {
   console.log(`📱 የጉዞ ፕላስ ሰርቨር በ port ${PORT} ላይ ተከፍቷል!`);
 });
+require('./bot');
