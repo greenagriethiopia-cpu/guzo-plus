@@ -1,6 +1,5 @@
 const { Telegraf, Markup } = require('telegraf');
-
-const bot = new Telegraf('9230639629:AAFD7yOnnr86UszesyVF4bhxo6pmR2gWqBk');
+const bot = new Telegraf(process.env.BOT_TOKEN);
 
 // /start ትዕዛዝ ሲሰጥ አዝራሮችን ማሳየት
 bot.start((ctx) => {
