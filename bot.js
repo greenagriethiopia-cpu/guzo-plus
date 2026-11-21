@@ -10,7 +10,6 @@ if (!BOT_TOKEN) {
 
 const bot = new Telegraf(BOT_TOKEN || 'MISSING_TOKEN');
 
-// --- Mongoose Schemas ---
 const driverSchema = new mongoose.Schema({
   telegramId: { type: String, required: true, unique: true },
   name: { type: String, default: 'ሹፌር' },
@@ -39,10 +38,8 @@ const tripSchema = new mongoose.Schema({
 const Driver = mongoose.models.Driver || mongoose.model('Driver', driverSchema);
 const Trip = mongoose.models.Trip || mongoose.model('Trip', tripSchema);
 
-// --- In-memory user conversation state ---
 const userSessions = new Map();
 
-// --- Helper: Simple Fare Estimator (ETB) ---
 function estimateFare(pickup, destination) {
   const baseFare = 120;
   const combinedLength = (pickup || '').length + (destination || '').length;
@@ -50,7 +47,6 @@ function estimateFare(pickup, destination) {
   return baseFare + variableFare;
 }
 
-// --- Connect to MongoDB ---
 async function connectDB() {
   if (!MONGO_URI) {
     console.log('ℹ️ MONGO_URI አልተዋቀረም — በጊዜያዊ ማህደረ ትውስታ እየሰራ ነው።');
@@ -65,7 +61,6 @@ async function connectDB() {
   }
 }
 
-// --- Main Menu ---
 function sendMainMenu(ctx, customHeader = null) {
   const text =
     (customHeader ? `${customHeader}\n\n` : '') +
@@ -77,14 +72,12 @@ function sendMainMenu(ctx, customHeader = null) {
   return ctx.reply(text, { parse_mode: 'Markdown' });
 }
 
-// --- /start Command ---
 bot.start(async (ctx) => {
   const userId = String(ctx.from.id);
   userSessions.delete(userId);
   await sendMainMenu(ctx);
 });
 
-// --- Driver Accepts Trip Button Callback ---
 bot.action(/^accept_trip_(.+)$/, async (ctx) => {
   try {
     const tripId = ctx.match[1];
@@ -100,7 +93,6 @@ bot.action(/^accept_trip_(.+)$/, async (ctx) => {
       return;
     }
 
-    // Atomically claim the trip only if it is still 'pending'
     const claimedTrip = await Trip.findOneAndUpdate(
       { _id: tripId, status: 'pending' },
       {
@@ -123,7 +115,6 @@ bot.action(/^accept_trip_(.+)$/, async (ctx) => {
 
     await ctx.answerCbQuery('✅ ጉዞውን በተሳካ ሁኔታ ተቀብለዋል!');
 
-    // Update the driver's notification message
     await ctx.editMessageText(
       `✅ *ጉዞውን ተቀብለዋል!*\n\n` +
         `🧍 ተሳፋሪ: *${claimedTrip.passengerName}*\n` +
@@ -135,7 +126,6 @@ bot.action(/^accept_trip_(.+)$/, async (ctx) => {
       { parse_mode: 'Markdown' }
     );
 
-    // Notify the passenger with driver details and plate number
     await bot.telegram.sendMessage(
       claimedTrip.passengerId,
       `🎉 *ሹፌር ተገኝቷል! ጉዞዎ ተቀባይነት አግኝቷል።*\n\n` +
@@ -153,11 +143,10 @@ bot.action(/^accept_trip_(.+)$/, async (ctx) => {
       await ctx.answerCbQuery('⚠️ ስህተት አጋጥሟል፣ እባክዎ እንደገና ይሞክሩ።', {
         show_alert: true
       });
-     (_) {}
+    } catch (_) {}
   }
 });
 
-// --- Text Message Flow ---
 bot.on('text', async (ctx) => {
   const userId = String(ctx.from.id);
   const text = (ctx.message.text || '').trim();
@@ -173,7 +162,6 @@ bot.on('text', async (ctx) => {
 
   const session = userSessions.get(userId);
 
-  // If user is currently in a multi-step flow
   if (session) {
     if (session.step === 'passenger_pickup') {
       session.pickup = text;
@@ -209,7 +197,6 @@ bot.on('text', async (ctx) => {
           { parse_mode: 'Markdown' }
         );
 
-        // Notify all registered drivers with an Accept button
         const drivers = await Driver.find({});
         const dispatchText =
           `🚨 *አዲስ የጉዞ ጥያቄ ደርሷል!*\n\n` +
@@ -273,7 +260,6 @@ bot.on('text', async (ctx) => {
     }
   }
 
-  // Main menu choices
   if (text === '1') {
     userSessions.set(userId, { step: 'passenger_pickup' });
     return ctx.reply('🧍 *የመነሻ ቦታዎን ያስገቡ* (ለምሳሌ፡ ጎተራ 47):', {
@@ -291,7 +277,6 @@ bot.on('text', async (ctx) => {
   return sendMainMenu(ctx, 'ℹ️ እባክዎ *1* ወይም *2* ይምረጡ (ወይም `/start` ይላኩ)።');
 });
 
-// --- Launch Helper (called by server.js) ---
 async function startBot() {
   await connectDB();
 
@@ -301,7 +286,6 @@ async function startBot() {
   }
 
   try {
-    // Clear any stale webhook so long polling runs cleanly without 409 conflict
     await bot.telegram.deleteWebhook({ drop_pending_updates: false });
     await bot.launch({ dropPendingUpdates: false });
     console.log('🤖 ጉዞ ፕላስ Telegram ቦት በተሳካ ሁኔታ ተጀምሯል!');
