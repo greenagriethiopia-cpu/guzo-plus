@@ -1,14 +1,19 @@
 const express = require('express');
-const app = express();
-const PORT = process.env.PORT || 3000;
+const { startBot } = require('./bot');
 
-app.use(express.static('public'));
+const app = express();
+const PORT = process.env.PORT || 10000;
 
 app.get('/', (req, res) => {
-  res.send('🚗 ጉዞ ፕላስ (Guzo Plus) ሰርቨር በመስመር ላይ ነው!');
+  res.status(200).send('Guzo Plus server is running!');
 });
 
-app.listen(PORT, () => {
-  console.log(`📱 የጉዞ ፕላስ ሰርቨር በ port ${PORT} ላይ ተከፍቷል!`);
+app.get('/health', (req, res) => {
+  res.status(200).json({ ok: true, service: 'guzo-plus' });
 });
-require('./bot');
+
+app.listen(PORT, '0.0.0.0', async () => {
+  console.log(`📱 የጉዞ ፕላስ ሰርቨር በ port ${PORT} ላይ ተከፍቷል!`);
+  await startBot();
+});
+
