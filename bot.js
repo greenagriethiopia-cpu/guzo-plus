@@ -78,7 +78,8 @@ bot.start(async (ctx) => {
     `እባክዎ የሚፈልጉትን አማራጭ ይምረጡ፦\n` +
     `1 — 🧍 የተሳፋሪ ጉዞ ማዘዝ\n` +
     `2 — 🚗 እንደ ሹፌር መመዝገብ / ታርጋ ማዘመን\n` +
-    `3 — 🔄 የሹፌር ሁኔታ መቀያየር (Available / Busy)`,
+    `3 — 🔄 የሹፌር ሁኔታ መቀያየር (Available / Busy)\n` +
+    `4 — 📊 የሹፌር ገቢ እና የተጠናቀቁ ጉዞዎች`,
     { parse_mode: 'Markdown' }
   );
 });
@@ -130,7 +131,40 @@ bot.on('text', async (ctx) => {
         return;
       }
 
-      await ctx.reply('እባክዎ *1* (ተሳፋሪ)፣ *2* (ሹፌር) ወይም *3* (ሁኔታ መቀያየር) ይምረጡ፣ ወይም /start ይላኩ።', { parse_mode: 'Markdown' });
+      if (text === '4') {
+        const existingDriver = await Driver.findOne({ telegramId });
+        if (!existingDriver) {
+          await ctx.reply('⚠️ መጀመሪያ እንደ ሹፌር ይመዝገቡ (አማራጭ *2* ይላኩ)።', { parse_mode: 'Markdown' });
+          return;
+        }
+
+        const completedTrips = await Trip.find({
+          driverId: telegramId,
+          status: 'completed'
+        });
+
+        const totalCompleted = completedTrips.length;
+        const totalEarnings = completedTrips.reduce(
+          (sum, trip) => sum + (Number(trip.estimatedFare) || 0),
+          0
+        );
+
+        await ctx.reply(
+          `📊 *የሹፌር ማጠቃለያ (Guzo Plus)*\n\n` +
+          `👤 ሹፌር: *${existingDriver.name}*\n` +
+          `🚘 ታርጋ: *${existingDriver.plateNumber}*\n` +
+          `📌 የአሁን ሁኔታ: *${existingDriver.isAvailable ? '🟢 Available (ዝግጁ)' : '🔴 Busy (በጉዞ ላይ)'}*\n` +
+          `🏁 የተጠናቀቁ ጉዞዎች: *${totalCompleted}*\n` +
+          `💰 ግምታዊ ጠቅላላ ገቢ: *${totalEarnings} ብር*`,
+          { parse_mode: 'Markdown' }
+        );
+        return;
+      }
+
+      await ctx.reply(
+        'እባክዎ *1* (ተሳፋሪ)፣ *2* (ሹፌር)፣ *3* (ሁኔታ መቀያየር) ወይም *4* (ገቢ እና ጉዞዎች) ይምረጡ፣ ወይም /start ይላኩ።',
+        { parse_mode: 'Markdown' }
+      );
       return;
     }
 
