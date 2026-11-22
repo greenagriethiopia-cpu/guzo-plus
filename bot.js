@@ -41,10 +41,23 @@ const Trip = mongoose.models.Trip || mongoose.model('Trip', tripSchema);
 const userSessions = new Map();
 
 function estimateFare(pickup, destination) {
-  const baseFare = 120;
-  const combinedLength = (pickup || '').length + (destination || '').length;
-  const variableFare = Math.min(Math.max(combinedLength * 5, 30), 250);
-  return baseFare + variableFare;
+  const cleanPickup = (pickup || '').trim();
+  const cleanDestination = (destination || '').trim();
+
+  if (!cleanPickup || !cleanDestination) {
+    return 150;
+  }
+
+  if (cleanPickup.toLowerCase() === cleanDestination.toLowerCase()) {
+    return 150;
+  }
+
+  const baseFare = 150;
+  const routeFactor = (cleanPickup.length + cleanDestination.length) * 6;
+  const cappedExtra = Math.min(Math.max(routeFactor, 30), 300);
+  const rawFare = baseFare + cappedExtra;
+
+  return Math.round(rawFare / 10) * 10;
 }
 
 async function connectDB() {
@@ -64,7 +77,8 @@ bot.start(async (ctx) => {
     `🚕 *እንኳን ወደ ጉዞ ፕላስ (Guzo Plus) በደህና መጡ!*\n\n` +
     `እባክዎ የሚፈልጉትን አማራጭ ይምረጡ፦\n` +
     `1 — 🧍 የተሳፋሪ ጉዞ ማዘዝ\n` +
-    `2 — 🚗 እንደ ሹፌር መመዝገብ / ታርጋ ማዘመን`,
+    `2 — 🚗 እንደ ሹፌር መመዝገብ / ታርጋ ማዘመን\n` +
+    `3 — 🔄 የሹፌር ሁኔታ መቀያየር (Available / Busy)`,
     { parse_mode: 'Markdown' }
   );
 });
@@ -93,7 +107,30 @@ bot.on('text', async (ctx) => {
         return;
       }
 
-      await ctx.reply('እባክዎ *1* (ተሳፋሪ) ወይም *2* (ሹፌር) ይምረጡ፣ ወይም /start ይላኩ።', { parse_mode: 'Markdown' });
+      if (text === '3') {
+        const existingDriver = await Driver.findOne({ telegramId });
+        if (!existingDriver) {
+          await ctx.reply('⚠️ መጀመሪያ እንደ ሹፌር ይመዝገቡ (አማራጭ *2* ይላኩ)።', { parse_mode: 'Markdown' });
+          return;
+        }
+
+        const nextStatus = !existingDriver.isAvailable;
+        const updatedDriver = await Driver.findOneAndUpdate(
+          { telegramId },
+          { $set: { isAvailable: nextStatus } },
+          { new: true }
+        );
+
+        await ctx.reply(
+          updatedDriver.isAvailable
+            ? `🟢 *አሁን ዝግጁ (Available) ነዎት!*\nአዳዲስ የጉዞ ጥያቄዎች ይደርስዎታል።`
+            : `🔴 *አሁን በጉዞ ላይ / ያልተመቸ (Busy) ነዎት!*\nአዳዲስ የጉዞ ጥያቄዎች ለጊዜው አይላኩልዎትም።`,
+          { parse_mode: 'Markdown' }
+        );
+        return;
+      }
+
+      await ctx.reply('እባክዎ *1* (ተሳፋሪ)፣ *2* (ሹፌር) ወይም *3* (ሁኔታ መቀያየር) ይምረጡ፣ ወይም /start ይላኩ።', { parse_mode: 'Markdown' });
       return;
     }
 
@@ -230,7 +267,12 @@ bot.action(/^accept_trip_(.+)$/, async (ctx) => {
       return;
     }
 
-    await ctx.answerCbQuery('✅ ጉዞውን ተቀብለዋል!');
+    await Driver.findOneAndUpdate(
+      { telegramId: driverTelegramId },
+      { $set: { isAvailable: false } }
+    );
+
+    await ctx.answerCbQuery('✅ ጉዞውን ተቀብለዋል! (ሁኔታዎ Busy ሆኗል)');
 
     await ctx.editMessageText(
       `✅ *ጉዞው ተቀባይነት አግኝቷል!*\n\n` +
@@ -238,7 +280,8 @@ bot.action(/^accept_trip_(.+)$/, async (ctx) => {
       `📍 መነሻ: *${claimedTrip.pickup}*\n` +
       `🏁 መድረሻ: *${claimedTrip.destination}*\n` +
       `💰 ግምታዊ ዋጋ: *${claimedTrip.estimatedFare} ብር*\n` +
-      `🚘 የመኪና ታርጋ: *${claimedTrip.plateNumber || 'አልተገለጸም'}*\n\n` +
+      `🚘 የመኪና ታርጋ: *${claimedTrip.plateNumber || 'አልተገለጸም'}*\n` +
+      `🔴 የሹፌር ሁኔታ: *Busy (በጉዞ ላይ)*\n\n` +
       `ጉዞውን ሲጨርሱ ወይም ሲሰርዙ ከታች ያሉትን ቁልፎች ይጠቀሙ፦`,
       {
         parse_mode: 'Markdown',
@@ -283,14 +326,20 @@ bot.action(/^complete_trip_(.+)$/, async (ctx) => {
       return;
     }
 
-    await ctx.answerCbQuery('🏁 ጉዞው በተሳካ ሁኔታ ተጠናቋል!');
+    await Driver.findOneAndUpdate(
+      { telegramId: driverTelegramId },
+      { $set: { isAvailable: true } }
+    );
+
+    await ctx.answerCbQuery('🏁 ጉዞው ተጠናቋል! (ሁኔታዎ Available ተመልሷል)');
     await ctx.editMessageText(
       `🏁 *ጉዞው ተጠናቋል!*\n\n` +
       `🧍 ተሳፋሪ: *${updatedTrip.passengerName}*\n` +
       `📍 መነሻ: *${updatedTrip.pickup}*\n` +
       `🏁 መድረሻ: *${updatedTrip.destination}*\n` +
       `💰 ክፍያ: *${updatedTrip.estimatedFare} ብር*\n` +
-      `📌 ሁኔታ: *completed*`,
+      `📌 ሁኔታ: *completed*\n` +
+      `🟢 የሹፌር ሁኔታ: *Available (ዝግጁ)*`,
       { parse_mode: 'Markdown' }
     );
 
@@ -325,13 +374,19 @@ bot.action(/^cancel_trip_(.+)$/, async (ctx) => {
       return;
     }
 
-    await ctx.answerCbQuery('❌ ጉዞው ተሰርዟል።');
+    await Driver.findOneAndUpdate(
+      { telegramId: driverTelegramId },
+      { $set: { isAvailable: true } }
+    );
+
+    await ctx.answerCbQuery('❌ ጉዞው ተሰርዟል። (ሁኔታዎ Available ተመልሷል)');
     await ctx.editMessageText(
       `❌ *ጉዞው ተሰርዟል!*\n\n` +
       `🧍 ተሳፋሪ: *${cancelledTrip.passengerName}*\n` +
       `📍 መነሻ: *${cancelledTrip.pickup}*\n` +
       `🏁 መድረሻ: *${cancelledTrip.destination}*\n` +
-      `📌 ሁኔታ: *cancelled*`,
+      `📌 ሁኔታ: *cancelled*\n` +
+      `🟢 የሹፌር ሁኔታ: *Available (ዝግጁ)*`,
       { parse_mode: 'Markdown' }
     );
 
@@ -360,3 +415,4 @@ async function startBot() {
 }
 
 module.exports = { startBot };
+
