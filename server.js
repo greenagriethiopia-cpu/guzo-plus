@@ -1,6 +1,8 @@
 
 const http = require('node:http');
 const crypto = require('node:crypto');
+const fs = require('node:fs');
+const path = require('node:path');
 const { MongoClient, ObjectId } = require('mongodb');
 
 const PORT = process.env.PORT || 3000;
@@ -112,6 +114,30 @@ const htmlPage = `<!DOCTYPE html>
       font-size: 16px;
       color: #374151;
       margin: 0 0 22px;
+    }
+    .gallery {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 14px;
+      margin: 20px 0 24px;
+    }
+    .gallery figure {
+      margin: 0;
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    .gallery img {
+      width: 100%;
+      height: 195px;
+      object-fit: cover;
+      display: block;
+    }
+    .gallery figcaption {
+      padding: 8px 10px;
+      font-size: 13px;
+      color: #374151;
     }
     .features {
       display: grid;
@@ -267,6 +293,17 @@ const htmlPage = `<!DOCTYPE html>
       በአዲስ አበባ እና በዙሪያዋ ፈጣን፣ ምቹ እና አስተማማኝ የጉዞና የትራንስፖርት መፍትሄ።<br />
       Fast, safe, and reliable ride-sharing experience.
     </p>
+
+    <section class="gallery">
+      <figure>
+        <img src="/public/guzo-stop.jpg" alt="ጉዞ ፕላስ መብራት ላይ የቆመ መኪና" />
+        <figcaption>በመብራት ላይ የቆመ ጉዞ ፕላስ</figcaption>
+      </figure>
+      <figure>
+        <img src="/public/guzo-billboard.jpg" alt="ጉዞ ፕላስ ትልቅ ስክሪን ማስታወቂያ" />
+        <figcaption>የጉዞ ፕላስ ከተማ ማስታወቂያ</figcaption>
+      </figure>
+    </section>
 
     <section class="features">
       <div class="box">
@@ -496,6 +533,28 @@ const htmlPage = `<!DOCTYPE html>
 
 const server = http.createServer(async (req, res) => {
   const cleanUrl = (req.url || '/').split('?')[0];
+
+  if (cleanUrl.startsWith('/public/') && req.method === 'GET') {
+    const safeRel = path.normalize(cleanUrl.replace(/^\/public\//, ''));
+    if (safeRel.startsWith('..')) {
+      res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' });
+      return res.end('Forbidden');
+    }
+    const filePath = path.join(__dirname, 'public', safeRel);
+    if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
+      const ext = path.extname(filePath).toLowerCase();
+      const mimeTypes = {
+        '.jpg': 'image/jpeg',
+        '.jpeg': 'image/jpeg',
+        '.png': 'image/png',
+        '.webp': 'image/webp',
+      };
+      res.writeHead(200, { 'Content-Type': mimeTypes[ext] || 'application/octet-stream' });
+      return fs.createReadStream(filePath).pipe(res);
+    }
+    res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+    return res.end('Image not found');
+  }
 
   if (cleanUrl === '/health/db' && req.method === 'GET') {
     return sendJson(res, 200, { status: dbStatus });
