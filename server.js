@@ -1,3 +1,4 @@
+
 const http = require('node:http');
 const crypto = require('node:crypto');
 const fs = require('node:fs');
@@ -8,6 +9,8 @@ const PORT = process.env.PORT || 3000;
 const MONGO_URI = process.env.MONGODB_URI || process.env.MONGO_URI || '';
 const DB_NAME = process.env.MONGODB_DB || 'guzo_plus';
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'guzo2026';
+const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
+const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID || '';
 
 let db = null;
 let dbStatus = 'Not configured (set MONGODB_URI)';
@@ -32,6 +35,40 @@ async function connectAtlas() {
     db = null;
     dbStatus = `Connection failed: ${err.message}`;
     console.error('MongoDB Atlas connection error:', err.message);
+  }
+}
+
+async function sendTelegramNotification(ride) {
+  if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) {
+    return;
+  }
+
+  const text = [
+    '🚕 *አዲስ የጉዞ ጥያቄ — ጉዞ ፕላስ (Guzo Plus)*',
+    `👤 *ስም:* ${ride.name}`,
+    `📞 *ስልክ:* ${ride.phone}`,
+    `📍 *መነሻ:* ${ride.pickup}`,
+    `🎯 *መድረሻ:* ${ride.dropoff}`,
+    `📌 *ሁኔታ:* ${ride.status || 'pending'}`,
+  ].join('\n');
+
+  try {
+    const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: TELEGRAM_CHAT_ID,
+        text,
+        parse_mode: 'Markdown',
+      }),
+    });
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error('Telegram sendMessage failed:', errText);
+    }
+  } catch (err) {
+    console.error('Telegram notification error:', err.message);
   }
 }
 
@@ -612,6 +649,7 @@ const server = http.createServer(async (req, res) => {
       };
 
       const result = await db.collection('rides').insertOne(doc);
+      await sendTelegramNotification(doc);
       return sendJson(res, 201, { ok: true, id: result.insertedId, ride: doc });
     } catch (err) {
       return sendJson(res, 400, { error: err.message || 'Invalid request' });
@@ -659,4 +697,3 @@ server.listen(PORT, () => {
   console.log(`Guzo Plus server running on port ${PORT}`);
   connectAtlas();
 });
-
