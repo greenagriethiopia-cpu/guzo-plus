@@ -1,10 +1,12 @@
 
 const http = require('node:http');
+const crypto = require('node:crypto');
 const { MongoClient, ObjectId } = require('mongodb');
 
 const PORT = process.env.PORT || 3000;
 const MONGO_URI = process.env.MONGODB_URI || process.env.MONGO_URI || '';
 const DB_NAME = process.env.MONGODB_DB || 'guzo_plus';
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'guzo2026';
 
 let db = null;
 let dbStatus = 'Not configured (set MONGODB_URI)';
@@ -56,6 +58,14 @@ function readJsonBody(req) {
 function sendJson(res, statusCode, data) {
   res.writeHead(statusCode, { 'Content-Type': 'application/json; charset=utf-8' });
   res.end(JSON.stringify(data));
+}
+
+function isAdminAuthorized(req) {
+  const headerVal = req.headers['x-admin-password'] || '';
+  const a = Buffer.from(String(headerVal), 'utf8');
+  const b = Buffer.from(String(ADMIN_PASSWORD), 'utf8');
+  if (a.length === 0 || a.length !== b.length) return false;
+  return crypto.timingSafeEqual(a, b);
 }
 
 const htmlPage = `<!DOCTYPE html>
@@ -173,8 +183,8 @@ const htmlPage = `<!DOCTYPE html>
     }
     .btn-sm {
       width: auto;
-      padding: 6px 10px;
-      font-size: 12px;
+      padding: 7px 12px;
+      font-size: 13px;
       border-radius: 6px;
       margin-right: 6px;
       margin-top: 6px;
@@ -197,13 +207,14 @@ const htmlPage = `<!DOCTYPE html>
       font-weight: bold;
       text-align: center;
     }
-    .admin-header {
+    .login-row {
       display: flex;
-      justify-content: space-between;
-      align-items: center;
+      gap: 8px;
       flex-wrap: wrap;
-      gap: 10px;
-      margin-bottom: 12px;
+      margin-bottom: 10px;
+    }
+    .login-row input {
+      flex: 1 1 200px;
     }
     .ride-item {
       background: #ffffff;
@@ -297,9 +308,11 @@ const htmlPage = `<!DOCTYPE html>
     </section>
 
     <section id="admin" class="card">
-      <div class="admin-header">
-        <h2 style="margin:0;">የአስተዳደር ክፍል — የጉዞ ጥያቄዎች</h2>
-        <button id="refreshRides" class="btn btn-sm btn-secondary" type="button">ዝርዝር አድስ</button>
+      <h2>የአስተዳደር ክፍል — የይለፍ ቃል ያስገቡ</h2>
+      <div class="login-row">
+        <input id="adminPassInput" type="password" placeholder="የአስተዳደር የይለፍ ቃል (Password)" />
+        <button id="unlockAdminBtn" class="btn btn-sm btn-secondary" type="button">ግባ</button>
+        <button id="lockAdminBtn" class="btn btn-sm btn-danger" type="button" style="display:none;">ውጣ (Lock)</button>
       </div>
       <div id="adminMsg"></div>
       <div id="ridesList"></div>
@@ -315,7 +328,15 @@ const htmlPage = `<!DOCTYPE html>
     const msg = document.getElementById('msg');
     const ridesList = document.getElementById('ridesList');
     const adminMsg = document.getElementById('adminMsg');
-    const refreshBtn = document.getElementById('refreshRides');
+    const passInput = document.getElementById('adminPassInput');
+    const unlockBtn = document.getElementById('unlockAdminBtn');
+    const lockBtn = document.getElementById('lockAdminBtn');
+
+    let adminPassword = sessionStorage.getItem('guzo_admin_pass') || '';
+    if (adminPassword) {
+      passInput.value = adminPassword;
+      lockBtn.style.display = 'inline-block';
+    }
 
     function escapeHtml(str) {
       return String(str || '')
@@ -337,19 +358,34 @@ const htmlPage = `<!DOCTYPE html>
       return 'status-pill';
     }
 
+    function adminHeaders(extra = {}) {
+      return {
+        ...extra,
+        'x-admin-password': adminPassword,
+      };
+    }
+
     async function loadRides() {
+      if (!adminPassword) {
+        adminMsg.style.color = '#4b5563';
+        adminMsg.textContent = 'ዝርዝሩን ለማየት የአስተዳደር የይለፍ ቃል ያስገቡ።';
+        ridesList.innerHTML = '';
+        return;
+      }
+
       adminMsg.style.color = '#374151';
       adminMsg.textContent = 'ጥያቄዎች እየተጫኑ ነው...';
       try {
-        const res = await fetch('/api/rides');
+        const res = await fetch('/api/rides', { headers: adminHeaders() });
         const data = await res.json();
         if (!res.ok) {
           adminMsg.style.color = '#b91c1c';
-          adminMsg.textContent = data.error || 'ዝርዝሩን ማምጣት አልተቻለም።';
+          adminMsg.textContent = data.error || 'የይለፍ ቃል ስህተት ነው።';
           ridesList.innerHTML = '';
           return;
         }
         adminMsg.textContent = '';
+        lockBtn.style.display = 'inline-block';
         const rides = data.rides || [];
         if (!rides.length) {
           ridesList.innerHTML = '<p style="text-align:center;color:#6b7280;">እስካሁን የተመዘገበ የጉዞ ጥያቄ የለም።</p>';
@@ -377,11 +413,32 @@ const htmlPage = `<!DOCTYPE html>
       }
     }
 
+    unlockBtn.addEventListener('click', () => {
+      adminPassword = passInput.value.trim();
+      if (!adminPassword) {
+        adminMsg.style.color = '#b91c1c';
+        adminMsg.textContent = 'እባክዎ የይለፍ ቃል ያስገቡ።';
+        return;
+      }
+      sessionStorage.setItem('guzo_admin_pass', adminPassword);
+      loadRides();
+    });
+
+    lockBtn.addEventListener('click', () => {
+      adminPassword = '';
+      passInput.value = '';
+      sessionStorage.removeItem('guzo_admin_pass');
+      lockBtn.style.display = 'none';
+      ridesList.innerHTML = '';
+      adminMsg.style.color = '#4b5563';
+      adminMsg.textContent = 'ተቆልፏል። እንደገና ለማየት የይለፍ ቃል ያስገቡ።';
+    });
+
     window.updateStatus = async function(id, status) {
       try {
         const res = await fetch('/api/rides/' + encodeURIComponent(id), {
           method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
+          headers: adminHeaders({ 'Content-Type': 'application/json' }),
           body: JSON.stringify({ status }),
         });
         if (res.ok) loadRides();
@@ -392,12 +449,11 @@ const htmlPage = `<!DOCTYPE html>
       try {
         const res = await fetch('/api/rides/' + encodeURIComponent(id), {
           method: 'DELETE',
+          headers: adminHeaders(),
         });
         if (res.ok) loadRides();
       } catch {}
     };
-
-    refreshBtn.addEventListener('click', loadRides);
 
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -426,7 +482,7 @@ const htmlPage = `<!DOCTYPE html>
         msg.style.color = '#15803d';
         msg.textContent = 'የጉዞ ጥያቄዎ በተሳካ ሁኔታ ተመዝግቧል!';
         form.reset();
-        loadRides();
+        if (adminPassword) loadRides();
       } catch {
         msg.style.color = '#b91c1c';
         msg.textContent = 'የኔትወርክ ስህተት አጋጥሟል።';
@@ -446,6 +502,9 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (cleanUrl === '/api/rides' && req.method === 'GET') {
+    if (!isAdminAuthorized(req)) {
+      return sendJson(res, 401, { error: 'ያልተፈቀደ (Unauthorized) — ትክክለኛ የይለፍ ቃል ያስገቡ።' });
+    }
     if (!db) return sendJson(res, 503, { error: 'Database not connected' });
     const rides = await db.collection('rides').find().sort({ createdAt: -1 }).limit(50).toArray();
     return sendJson(res, 200, { rides });
@@ -482,6 +541,9 @@ const server = http.createServer(async (req, res) => {
 
   const rideIdMatch = cleanUrl.match(/^\/api\/rides\/([a-fA-F0-9]{24})$/);
   if (rideIdMatch) {
+    if (!isAdminAuthorized(req)) {
+      return sendJson(res, 401, { error: 'ያልተፈቀደ (Unauthorized) — ትክክለኛ የይለፍ ቃል ያስገቡ።' });
+    }
     if (!db) return sendJson(res, 503, { error: 'Database not connected' });
     const _id = new ObjectId(rideIdMatch[1]);
 
