@@ -18,6 +18,7 @@ const BASE_FARE = Number(process.env.BASE_FARE || 200);
 const MORNING_SURCHARGE = Number(process.env.MORNING_SURCHARGE || 50);
 const EVENING_SURCHARGE = Number(process.env.EVENING_SURCHARGE || 50);
 const SHARED_DISCOUNT_RATE = Number(process.env.SHARED_DISCOUNT_RATE || 0.25);
+const PLATFORM_COMMISSION_RATE = Number(process.env.PLATFORM_COMMISSION_RATE || 0.10);
 
 let db = null;
 let dbStatus = 'Not configured (set MONGODB_URI)';
@@ -72,9 +73,19 @@ function rideModeLabel(mode) {
   return mode === 'shared' ? 'ሼር (ጋራ ጉዞ)' : 'የግል (ብቻዬን)';
 }
 
-function calculateFare({ rideMode, timeSlot }) {
+function getVehicleBaseFare(vehicleType) {
+  const v = String(vehicleType || '').toLowerCase();
+  if (v.includes('bajaj') || v.includes('ባጃጅ')) return Number(process.env.BAJAJ_FARE || 120);
+  if (v.includes('minibus') || v.includes('ሚኒባስ')) return Number(process.env.MINIBUS_FARE || 250);
+  if (v.includes('suv') || v.includes('ኤስ.ዩ.ቪ')) return Number(process.env.SUV_FARE || 350);
+  if (v.includes('motorcycle') || v.includes('ሞተርሳይክል')) return Number(process.env.MOTORCYCLE_FARE || 100);
+  if (v.includes('sedan') || v.includes('ሲዳን')) return Number(process.env.SEDAN_FARE || BASE_FARE);
+  return BASE_FARE;
+}
+
+function calculateFare({ rideMode, timeSlot, vehicleType }) {
   const period = detectTimePeriod(timeSlot);
-  let fare = BASE_FARE;
+  let fare = getVehicleBaseFare(vehicleType);
 
   if (period === 'morning') {
     fare += MORNING_SURCHARGE;
@@ -92,7 +103,47 @@ function calculateFare({ rideMode, timeSlot }) {
     periodText: periodLabel(period),
     rideMode: isShared ? 'shared' : 'solo',
     rideModeText: rideModeLabel(isShared ? 'shared' : 'solo'),
+    vehicleType: vehicleType || 'Sedan / ሲዳን',
     estimatedFare: fare,
+  };
+}
+
+function calculateRevenueBreakdown(estimatedFare) {
+  const totalFare = Math.max(0, Number(estimatedFare || 0));
+  const platformFee = Math.round(totalFare * PLATFORM_COMMISSION_RATE);
+  const driverEarning = totalFare - platformFee;
+  return { totalFare, platformFee, driverEarning };
+}
+
+function summarizeCompletedRides(rides) {
+  const list = Array.isArray(rides) ? rides : [];
+  let completedCount = 0;
+  let totalCompletedFare = 0;
+  let totalPlatformFee = 0;
+  let totalDriverEarning = 0;
+
+  for (const r of list) {
+    if (r.status !== 'completed') continue;
+    completedCount += 1;
+
+    const fare = Number(r.estimatedFare ?? BASE_FARE ?? 0);
+    const fee = r.platformFee != null
+      ? Number(r.platformFee)
+      : calculateRevenueBreakdown(fare).platformFee;
+    const earning = r.driverEarning != null
+      ? Number(r.driverEarning)
+      : Math.max(0, fare - fee);
+
+    totalCompletedFare += fare;
+    totalPlatformFee += fee;
+    totalDriverEarning += earning;
+  }
+
+  return {
+    completedCount,
+    totalCompletedFare,
+    totalPlatformFee,
+    totalDriverEarning,
   };
 }
 
@@ -127,6 +178,7 @@ async function sendTelegramNotification(ride) {
     '🚕 *አዲስ የጉዞ ጥያቄ — ጉዞ ፕላስ (Guzo Plus)*',
     `👤 *ስም:* ${ride.name}`,
     `📞 *ስልክ:* ${ride.phone}`,
+    `🚘 *ተሽከርካሪ:* ${ride.vehicleType || 'Sedan / ሲዳን'}`,
     `📍 *መነሻ:* ${ride.pickup}`,
     `🎯 *መድረሻ:* ${ride.dropoff}`,
     `👥 *ዓይነት:* ${ride.rideModeText || rideModeLabel(ride.rideMode)}`,
@@ -184,7 +236,7 @@ async function handleTelegramMessage(msg) {
       const fareText = r.estimatedFare != null ? `${r.estimatedFare} ብር` : `${BASE_FARE} ብር`;
       lines.push(
         `${idx + 1}. *${r.name}* (${r.phone}) — _${r.status || 'pending'}_`,
-        `   📍 ${r.pickup} → 🎯 ${r.dropoff}`,
+        `   🚘 ${r.vehicleType || 'Sedan / ሲዳን'} | 📍 ${r.pickup} → 🎯 ${r.dropoff}`,
         `   👥 ${modeText} | 💰 ${fareText}`
       );
     });
@@ -348,6 +400,7 @@ function renderPage({ notice = '', noticeOk = true, adminPass = '', rides = [], 
     : '';
 
   const discountPercent = Math.round(SHARED_DISCOUNT_RATE * 100);
+  const commissionPercent = Math.round(PLATFORM_COMMISSION_RATE * 100);
 
   let adminSectionHtml = `
     <div id="admin" class="box">
@@ -360,10 +413,19 @@ function renderPage({ notice = '', noticeOk = true, adminPass = '', rides = [], 
   `;
 
   if (adminPass) {
+    const summary = summarizeCompletedRides(rides);
+
     adminSectionHtml += `
       <form method="POST" action="/admin/logout">
         <button type="submit" class="btn-red">ውጣ</button>
       </form>
+      <div class="box" style="background:#f0fdf4;border-color:#15803d;">
+        <h3>የተጠናቀቁ ጉዞዎች ገቢ ማጠቃለያ (ኮሚሽን ${escapeHtml(String(commissionPercent))}%)</h3>
+        <p><b>የተጠናቀቁ ጉዞዎች ብዛት:</b> ${escapeHtml(String(summary.completedCount))}</p>
+        <p><b>ጠቅላላ የተጠናቀቀ ጉዞ ዋጋ:</b> ${escapeHtml(String(summary.totalCompletedFare))} ብር</p>
+        <p><b>የጉዞ ፕላስ ኮሚሽን ገቢ:</b> ${escapeHtml(String(summary.totalPlatformFee))} ብር</p>
+        <p><b>የአሽከርካሪዎች ድምር ገቢ:</b> ${escapeHtml(String(summary.totalDriverEarning))} ብር</p>
+      </div>
       <h3>የጉዞ ጥያቄዎች</h3>
     `;
 
@@ -372,12 +434,16 @@ function renderPage({ notice = '', noticeOk = true, adminPass = '', rides = [], 
     } else {
       adminSectionHtml += rides.map((r) => {
         const modeText = r.rideModeText || rideModeLabel(r.rideMode);
-        const fareText = r.estimatedFare != null ? `${r.estimatedFare} ብር` : `${BASE_FARE} ብር`;
+        const fareVal = Number(r.estimatedFare ?? BASE_FARE);
+        const fareText = `${fareVal} ብር`;
+        const feeVal = r.platformFee != null
+          ? Number(r.platformFee)
+          : calculateRevenueBreakdown(fareVal).platformFee;
         return `
         <div class="item">
           <div><b>${escapeHtml(r.name)}</b> (${escapeHtml(r.phone)}) - ${escapeHtml(statusLabel(r.status))}</div>
-          <div>${escapeHtml(r.pickup)} -> ${escapeHtml(r.dropoff)}</div>
-          <div>${escapeHtml(modeText)} | <b>${escapeHtml(fareText)}</b></div>
+          <div>${escapeHtml(r.vehicleType || 'Sedan / ሲዳን')} | ${escapeHtml(r.pickup)} -> ${escapeHtml(r.dropoff)}</div>
+          <div>${escapeHtml(modeText)} | <b>${escapeHtml(fareText)}</b> | ኮሚሽን: <b>${escapeHtml(String(feeVal))} ብር</b></div>
           <form method="POST" action="/admin/rides/${escapeHtml(String(r._id))}/status">
             ${passHiddenInput}
             <input type="hidden" name="status" value="accepted" />
@@ -492,7 +558,7 @@ function renderPage({ notice = '', noticeOk = true, adminPass = '', rides = [], 
 
     <div id="book" class="box">
       <h2>ጉዞ ይጠይቁ</h2>
-      <p>መነሻ ${escapeHtml(String(BASE_FARE))} ብር | ጠዋት +${escapeHtml(String(MORNING_SURCHARGE))} | ማታ +${escapeHtml(String(EVENING_SURCHARGE))} | ሼር ${escapeHtml(String(discountPercent))}% ቅናሽ</p>
+      <p>መነሻ ዋጋ እንደ ተሽከርካሪው ይለያያል | ጠዋት +${escapeHtml(String(MORNING_SURCHARGE))} | ማታ +${escapeHtml(String(EVENING_SURCHARGE))} | ሼር ${escapeHtml(String(discountPercent))}% ቅናሽ</p>
       <form method="POST" action="/rides">
         <label for="name">ሙሉ ስም</label>
         <input id="name" name="name" type="text" required />
@@ -502,6 +568,14 @@ function renderPage({ notice = '', noticeOk = true, adminPass = '', rides = [], 
         <input id="pickup" name="pickup" type="text" required />
         <label for="dropoff">መድረሻ</label>
         <input id="dropoff" name="dropoff" type="text" required />
+        <label for="vehicleType">የሚፈልጉት ተሽከርካሪ ዓይነት</label>
+        <select id="vehicleType" name="vehicleType" required>
+          <option value="Bajaj / ባጃጅ">Bajaj / ባጃጅ</option>
+          <option value="Sedan / ሲዳን">Sedan / ሲዳን</option>
+          <option value="Minibus / ሚኒባስ (HiAce / Higer)">Minibus / ሚኒባስ (HiAce / Higer)</option>
+          <option value="SUV / ኤስ.ዩ.ቪ">SUV / ኤስ.ዩ.ቪ</option>
+          <option value="Motorcycle / ሞተርሳይክል">Motorcycle / ሞተርሳይክል</option>
+        </select>
         <label for="rideMode">ዓይነት</label>
         <select id="rideMode" name="rideMode" required>
           <option value="shared">ሼር / ጋራ (${escapeHtml(String(discountPercent))}% ቅናሽ)</option>
@@ -632,6 +706,7 @@ const server = http.createServer(async (req, res) => {
         const phone = (body.phone || '').trim();
         const pickup = (body.pickup || '').trim();
         const dropoff = (body.dropoff || '').trim();
+        const vehicleType = (body.vehicleType || 'Sedan / ሲዳን').trim();
         const rideMode = (body.rideMode || 'shared').trim();
         const timeSlot = (body.timeSlot || 'auto').trim();
 
@@ -639,13 +714,14 @@ const server = http.createServer(async (req, res) => {
           return sendHtml(res, 400, renderPage({ notice: 'ሁሉንም ባዶ ቦታዎች ይሙሉ።', noticeOk: false }));
         }
 
-        const fareInfo = calculateFare({ rideMode, timeSlot });
+        const fareInfo = calculateFare({ rideMode, timeSlot, vehicleType });
 
         const doc = {
           name,
           phone,
           pickup,
           dropoff,
+          vehicleType: fareInfo.vehicleType,
           rideMode: fareInfo.rideMode,
           rideModeText: fareInfo.rideModeText,
           timePeriod: fareInfo.period,
@@ -657,7 +733,7 @@ const server = http.createServer(async (req, res) => {
         await db.collection('rides').insertOne(doc);
         await sendTelegramNotification(doc);
         return sendHtml(res, 200, renderPage({
-          notice: `የጉዞ ጥያቄዎ ተመዝግቧል! (${fareInfo.rideModeText} • ${fareInfo.periodText} • ግምታዊ ዋጋ: ${fareInfo.estimatedFare} ብር)`,
+          notice: `የጉዞ ጥያቄዎ ተመዝግቧል! (${fareInfo.vehicleType} • ${fareInfo.rideModeText} • ${fareInfo.periodText} • ግምታዊ ዋጋ: ${fareInfo.estimatedFare} ብር)`,
           noticeOk: true,
         }));
       }
@@ -691,113 +767,4 @@ const server = http.createServer(async (req, res) => {
       if (cleanUrl === '/admin') {
         const pass = (body.password || '').trim();
         if (!isValidPassword(pass)) {
-          return sendHtml(res, 401, renderPage({ notice: 'የይለፍ ቃል ስህተት ነው።', noticeOk: false }));
-        }
-        const lists = await fetchAdminLists();
-        return sendHtml(res, 200, renderPage({
-          adminPass: pass,
-          rides: lists.rides,
-          drivers: lists.drivers,
-        }));
-      }
-
-      if (cleanUrl === '/admin/logout') {
-        return sendHtml(res, 200, renderPage({ notice: 'ተቆልፏል።', noticeOk: true }));
-      }
-
-      const rideStatusMatch = cleanUrl.match(/^\/admin\/rides\/([a-fA-F0-9]{24})\/status$/);
-      if (rideStatusMatch) {
-        const pass = (body.password || '').trim();
-        if (!isValidPassword(pass)) {
-          return sendHtml(res, 401, renderPage({ notice: 'የይለፍ ቃል ስህተት ነው።', noticeOk: false }));
-        }
-        const allowed = ['pending', 'accepted', 'completed'];
-        if (db && allowed.includes(body.status)) {
-          await db.collection('rides').updateOne(
-            { _id: new ObjectId(rideStatusMatch[1]) },
-            { $set: { status: body.status, updatedAt: new Date() } }
-          );
-        }
-        const lists = await fetchAdminLists();
-        return sendHtml(res, 200, renderPage({
-          notice: 'የጉዞ ሁኔታ ተቀይሯል።',
-          noticeOk: true,
-          adminPass: pass,
-          rides: lists.rides,
-          drivers: lists.drivers,
-        }));
-      }
-
-      const rideDeleteMatch = cleanUrl.match(/^\/admin\/rides\/([a-fA-F0-9]{24})\/delete$/);
-      if (rideDeleteMatch) {
-        const pass = (body.password || '').trim();
-        if (!isValidPassword(pass)) {
-          return sendHtml(res, 401, renderPage({ notice: 'የይለፍ ቃል ስህተት ነው።', noticeOk: false }));
-        }
-        if (db) {
-          await db.collection('rides').deleteOne({ _id: new ObjectId(rideDeleteMatch[1]) });
-        }
-        const lists = await fetchAdminLists();
-        return sendHtml(res, 200, renderPage({
-          notice: 'የጉዞ ጥያቄ ተሰርዟል።',
-          noticeOk: true,
-          adminPass: pass,
-          rides: lists.rides,
-          drivers: lists.drivers,
-        }));
-      }
-
-      const driverStatusMatch = cleanUrl.match(/^\/admin\/drivers\/([a-fA-F0-9]{24})\/status$/);
-      if (driverStatusMatch) {
-        const pass = (body.password || '').trim();
-        if (!isValidPassword(pass)) {
-          return sendHtml(res, 401, renderPage({ notice: 'የይለፍ ቃል ስህተት ነው።', noticeOk: false }));
-        }
-        const allowed = ['pending', 'approved'];
-        if (db && allowed.includes(body.status)) {
-          await db.collection('drivers').updateOne(
-            { _id: new ObjectId(driverStatusMatch[1]) },
-            { $set: { status: body.status, updatedAt: new Date() } }
-          );
-        }
-        const lists = await fetchAdminLists();
-        return sendHtml(res, 200, renderPage({
-          notice: 'የአሽከርካሪ ሁኔታ ተቀይሯል።',
-          noticeOk: true,
-          adminPass: pass,
-          rides: lists.rides,
-          drivers: lists.drivers,
-        }));
-      }
-
-      const driverDeleteMatch = cleanUrl.match(/^\/admin\/drivers\/([a-fA-F0-9]{24})\/delete$/);
-      if (driverDeleteMatch) {
-        const pass = (body.password || '').trim();
-        if (!isValidPassword(pass)) {
-          return sendHtml(res, 401, renderPage({ notice: 'የይለፍ ቃል ስህተት ነው።', noticeOk: false }));
-        }
-        if (db) {
-          await db.collection('drivers').deleteOne({ _id: new ObjectId(driverDeleteMatch[1]) });
-        }
-        const lists = await fetchAdminLists();
-        return sendHtml(res, 200, renderPage({
-          notice: 'አሽከርካሪው ተሰርዟል።',
-          noticeOk: true,
-          adminPass: pass,
-          rides: lists.rides,
-          drivers: lists.drivers,
-        }));
-      }
-    } catch (err) {
-      return sendHtml(res, 400, renderPage({ notice: err.message || 'ስህተት አጋጥሟል።', noticeOk: false }));
-    }
-  }
-
-  return sendHtml(res, 200, renderPage({}));
-});
-
-server.listen(PORT, async () => {
-  console.log(`Guzo Plus server running on port ${PORT}`);
-  await connectAtlas();
-  pollTelegramUpdates();
-});
+          return sendHtml(res, 401,
