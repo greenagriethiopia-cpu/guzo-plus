@@ -525,12 +525,14 @@ function renderPage({ notice = '', noticeOk = true, adminPass = '', rides = [], 
         <input id="driverName" name="driverName" type="text" required />
         <label for="driverPhone">ስልክ ቁጥር</label>
         <input id="driverPhone" name="driverPhone" type="tel" required />
-        <label for="vehicleType">ተሽከርካሪ</label>
+        <label for="vehicleType">ተሽከርካሪ ዓይነት</label>
         <select id="vehicleType" name="vehicleType" required>
+          <option value="Bajaj / ባጃጅ">Bajaj / ባጃጅ</option>
           <option value="Sedan / ሲዳን">Sedan / ሲዳን</option>
-          <option value="Minivan / ሚኒቫን">Minivan / ሚኒቫን</option>
+          <option value="Minibus / ሚኒባስ (HiAce / Higer)">Minibus / ሚኒባስ (HiAce / Higer)</option>
           <option value="SUV / ኤስ.ዩ.ቪ">SUV / ኤስ.ዩ.ቪ</option>
           <option value="Motorcycle / ሞተርሳይክል">Motorcycle / ሞተርሳይክል</option>
+          <option value="Other / ሌላ">Other / ሌላ</option>
         </select>
         <label for="plateNumber">ሰሌዳ</label>
         <input id="plateNumber" name="plateNumber" type="text" required />
