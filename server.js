@@ -1,10 +1,9 @@
-const express = require('express');
-const app = express();
+
+const http = require('node:http');
 
 const PORT = process.env.PORT || 3000;
 
-app.get('/', (req, res) => {
-  res.status(200).send(`<!DOCTYPE html>
+const htmlPage = `<!DOCTYPE html>
 <html lang="am">
 <head>
   <meta charset="UTF-8" />
@@ -118,4 +117,14 @@ app.get('/', (req, res) => {
       © 2026 Guzo Plus (ጉዞ ፕላስ) — https://guzo-plus-05wo.onrender.com/
     </div>
   </main>
+</body>
+</html>`;
 
+const server = http.createServer((req, res) => {
+  res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+  res.end(htmlPage);
+});
+
+server.listen(PORT, () => {
+  console.log(`Guzo Plus server running on port ${PORT}`);
+});
