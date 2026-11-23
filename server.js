@@ -848,5 +848,176 @@ const server = http.createServer(async (req, res) => {
       }
       const filePath = path.join(__dirname, 'public', safeRel);
       if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
-        const ext = path.extname(file
+        const ext = path.extname(filePath).toLowerCase();
+        const mimeTypes = {
+          '.jpg': 'image/jpeg',
+          '.jpeg': 'image/jpeg',
+          '.png': 'image/png',
+          '.webp': 'image/webp',
+        };
+        res.writeHead(200, { 'Content-Type': mimeTypes[ext] || 'application/octet-stream' });
+        return fs.createReadStream(filePath).pipe(res);
+      }
+      res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+      return res.end('Image not found');
+    }
+  }
+
+  if (cleanUrl === '/health/db' && req.method === 'GET') {
+    return sendJson(res, 200, { status: dbStatus });
+  }
+
+  if (cleanUrl === '/api/rides' && req.method === 'GET') {
+    if (!isAdminAuthorized(req)) {
+      return sendJson(res, 401, { error: 'ያልተፈቀደ (Unauthorized) — ትክክለኛ የይለፍ ቃል ያስገቡ።' });
+    }
+    if (!db) return sendJson(res, 503, { error: 'Database not connected' });
+    const rides = await db.collection('rides').find().sort({ createdAt: -1 }).limit(50).toArray();
+    return sendJson(res, 200, { rides });
+  }
+
+  if (cleanUrl === '/api/rides' && req.method === 'POST') {
+    if (!db) return sendJson(res, 503, { error: 'Database not connected' });
+    try {
+      const body = await readJsonBody(req);
+      const name = (body.name || '').trim();
+      const phone = (body.phone || '').trim();
+      const pickup = (body.pickup || '').trim();
+      const dropoff = (body.dropoff || '').trim();
+
+      if (!name || !phone || !pickup || !dropoff) {
+        return sendJson(res, 400, { error: 'ሁሉንም ባዶ ቦታዎች ይሙሉ።' });
+      }
+
+      const doc = {
+        name,
+        phone,
+        pickup,
+        dropoff,
+        status: 'pending',
+        createdAt: new Date(),
+      };
+
+      const result = await db.collection('rides').insertOne(doc);
+      await sendTelegramNotification(doc);
+      return sendJson(res, 201, { ok: true, id: result.insertedId, ride: doc });
+    } catch (err) {
+      return sendJson(res, 400, { error: err.message || 'Invalid request' });
+    }
+  }
+
+  const rideIdMatch = cleanUrl.match(/^\/api\/rides\/([a-fA-F0-9]{24})$/);
+  if (rideIdMatch) {
+    if (!isAdminAuthorized(req)) {
+      return sendJson(res, 401, { error: 'ያልተፈቀደ (Unauthorized) — ትክክለኛ የይለፍ ቃል ያስገቡ።' });
+    }
+    if (!db) return sendJson(res, 503, { error: 'Database not connected' });
+    const _id = new ObjectId(rideIdMatch[1]);
+
+    if (req.method === 'PATCH') {
+      try {
+        const body = await readJsonBody(req);
+        const allowed = ['pending', 'accepted', 'completed'];
+        if (!allowed.includes(body.status)) {
+          return sendJson(res, 400, { error: 'ልክ ያልሆነ ሁኔታ (status)' });
+        }
+        const result = await db.collection('rides').updateOne(
+          { _id },
+          { $set: { status: body.status, updatedAt: new Date() } }
+        );
+        if (!result.matchedCount) return sendJson(res, 404, { error: 'ጥያቄው አልተገኘም' });
+        return sendJson(res, 200, { ok: true, status: body.status });
+      } catch (err) {
+        return sendJson(res, 400, { error: err.message || 'Invalid request' });
+      }
+    }
+
+    if (req.method === 'DELETE') {
+      const result = await db.collection('rides').deleteOne({ _id });
+      if (!result.deletedCount) return sendJson(res, 404, { error: 'ጥያቄው አልተገኘም' });
+      return sendJson(res, 200, { ok: true });
+    }
+  }
+
+  if (cleanUrl === '/api/drivers' && req.method === 'GET') {
+    if (!isAdminAuthorized(req)) {
+      return sendJson(res, 401, { error: 'ያልተፈቀደ (Unauthorized) — ትክክለኛ የይለፍ ቃል ያስገቡ።' });
+    }
+    if (!db) return sendJson(res, 503, { error: 'Database not connected' });
+    const drivers = await db.collection('drivers').find().sort({ createdAt: -1 }).limit(50).toArray();
+    return sendJson(res, 200, { drivers });
+  }
+
+  if (cleanUrl === '/api/drivers' && req.method === 'POST') {
+    if (!db) return sendJson(res, 503, { error: 'Database not connected' });
+    try {
+      const body = await readJsonBody(req);
+      const name = (body.name || '').trim();
+      const phone = (body.phone || '').trim();
+      const vehicleType = (body.vehicleType || '').trim();
+      const plateNumber = (body.plateNumber || '').trim();
+
+      if (!name || !phone || !vehicleType || !plateNumber) {
+        return sendJson(res, 400, { error: 'ሁሉንም የአሽከርካሪ መረጃዎች ይሙሉ።' });
+      }
+
+      const doc = {
+        name,
+        phone,
+        vehicleType,
+        plateNumber,
+        status: 'pending',
+        createdAt: new Date(),
+      };
+
+      const result = await db.collection('drivers').insertOne(doc);
+      await sendDriverNotification(doc);
+      return sendJson(res, 201, { ok: true, id: result.insertedId, driver: doc });
+    } catch (err) {
+      return sendJson(res, 400, { error: err.message || 'Invalid request' });
+    }
+  }
+
+  const driverIdMatch = cleanUrl.match(/^\/api\/drivers\/([a-fA-F0-9]{24})$/);
+  if (driverIdMatch) {
+    if (!isAdminAuthorized(req)) {
+      return sendJson(res, 401, { error: 'ያልተፈቀደ (Unauthorized) — ትክክለኛ የይለፍ ቃል ያስገቡ።' });
+    }
+    if (!db) return sendJson(res, 503, { error: 'Database not connected' });
+    const _id = new ObjectId(driverIdMatch[1]);
+
+    if (req.method === 'PATCH') {
+      try {
+        const body = await readJsonBody(req);
+        const allowed = ['pending', 'approved'];
+        if (!allowed.includes(body.status)) {
+          return sendJson(res, 400, { error: 'ልክ ያልሆነ ሁኔታ (status)' });
+        }
+        const result = await db.collection('drivers').updateOne(
+          { _id },
+          { $set: { status: body.status, updatedAt: new Date() } }
+        );
+        if (!result.matchedCount) return sendJson(res, 404, { error: 'አሽከርካሪው አልተገኘም' });
+        return sendJson(res, 200, { ok: true, status: body.status });
+      } catch (err) {
+        return sendJson(res, 400, { error: err.message || 'Invalid request' });
+      }
+    }
+
+    if (req.method === 'DELETE') {
+      const result = await db.collection('drivers').deleteOne({ _id });
+      if (!result.deletedCount) return sendJson(res, 404, { error: 'አሽከርካሪው አልተገኘም' });
+      return sendJson(res, 200, { ok: true });
+    }
+  }
+
+  res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+  res.end(htmlPage);
+});
+
+server.listen(PORT, async () => {
+  console.log(`Guzo Plus server running on port ${PORT}`);
+  await connectAtlas();
+  pollTelegramUpdates();
+});
 
