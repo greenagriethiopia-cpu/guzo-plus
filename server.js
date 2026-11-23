@@ -1,4 +1,3 @@
-
 const http = require('node:http');
 const crypto = require('node:crypto');
 const fs = require('node:fs');
@@ -11,6 +10,12 @@ const DB_NAME = process.env.MONGODB_DB || 'guzo_plus';
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'guzo2026';
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID || '';
+const DISPATCH_PHONE = process.env.DISPATCH_PHONE || '0923579382';
+
+const BASE_FARE = Number(process.env.BASE_FARE || 200);
+const MORNING_SURCHARGE = Number(process.env.MORNING_SURCHARGE || 50);
+const EVENING_SURCHARGE = Number(process.env.EVENING_SURCHARGE || 50);
+const SHARED_DISCOUNT_RATE = Number(process.env.SHARED_DISCOUNT_RATE || 0.25);
 
 let db = null;
 let dbStatus = 'Not configured (set MONGODB_URI)';
@@ -38,6 +43,55 @@ async function connectAtlas() {
     dbStatus = `Connection failed: ${err.message}`;
     console.error('MongoDB Atlas connection error:', err.message);
   }
+}
+
+function getCurrentEthiopiaHour() {
+  const now = new Date();
+  return (now.getUTCHours() + 3) % 24;
+}
+
+function detectTimePeriod(selectedPeriod) {
+  if (selectedPeriod === 'morning' || selectedPeriod === 'evening' || selectedPeriod === 'normal') {
+    return selectedPeriod;
+  }
+  const hour = getCurrentEthiopiaHour();
+  if (hour >= 6 && hour < 10) return 'morning';
+  if (hour >= 17 && hour < 21) return 'evening';
+  return 'normal';
+}
+
+function periodLabel(period) {
+  if (period === 'morning') return 'ጠዋት ታሪፍ (Peak)';
+  if (period === 'evening') return 'ማታ ታሪፍ (Peak)';
+  return 'መደበኛ ሰዓት ታሪፍ';
+}
+
+function rideModeLabel(mode) {
+  return mode === 'shared' ? 'ሼር (ጋራ ጉዞ)' : 'የግል (ብቻዬን)';
+}
+
+function calculateFare({ rideMode, timeSlot }) {
+  const period = detectTimePeriod(timeSlot);
+  let fare = BASE_FARE;
+
+  if (period === 'morning') {
+    fare += MORNING_SURCHARGE;
+  } else if (period === 'evening') {
+    fare += EVENING_SURCHARGE;
+  }
+
+  const isShared = rideMode === 'shared';
+  if (isShared) {
+    fare = Math.round(fare * (1 - SHARED_DISCOUNT_RATE));
+  }
+
+  return {
+    period,
+    periodText: periodLabel(period),
+    rideMode: isShared ? 'shared' : 'solo',
+    rideModeText: rideModeLabel(isShared ? 'shared' : 'solo'),
+    estimatedFare: fare,
+  };
 }
 
 async function sendTelegramText(chatId, text) {
@@ -73,6 +127,9 @@ async function sendTelegramNotification(ride) {
     `📞 *ስልክ:* ${ride.phone}`,
     `📍 *መነሻ:* ${ride.pickup}`,
     `🎯 *መድረሻ:* ${ride.dropoff}`,
+    `👥 *ዓይነት:* ${ride.rideModeText || rideModeLabel(ride.rideMode)}`,
+    `🕒 *ታሪፍ:* ${ride.periodText || periodLabel(ride.timePeriod)}`,
+    `💰 *ግምታዊ ዋጋ:* ${ride.estimatedFare ?? BASE_FARE} ብር`,
     `📌 *ሁኔታ:* ${ride.status || 'pending'}`,
   ].join('\n');
   await sendTelegramText(TELEGRAM_CHAT_ID, text);
@@ -121,9 +178,12 @@ async function handleTelegramMessage(msg) {
     }
     const lines = ['📋 *የቅርብ ጊዜ የጉዞ ጥያቄዎች:*', ''];
     rides.forEach((r, idx) => {
+      const modeText = r.rideModeText || rideModeLabel(r.rideMode);
+      const fareText = r.estimatedFare != null ? `${r.estimatedFare} ብር` : `${BASE_FARE} ብር`;
       lines.push(
         `${idx + 1}. *${r.name}* (${r.phone}) — _${r.status || 'pending'}_`,
-        `   📍 ${r.pickup} → 🎯 ${r.dropoff}`
+        `   📍 ${r.pickup} → 🎯 ${r.dropoff}`,
+        `   👥 ${modeText} | 💰 ${fareText}`
       );
     });
     await sendTelegramText(chatId, lines.join('\n'));
@@ -247,19 +307,23 @@ const allowedRootImages = new Set([
 
 function renderPage({ notice = '', noticeOk = true, adminPass = '', rides = [], drivers = [], showPhotos = false }) {
   const safePass = escapeHtml(adminPass);
+  const rawPhone = String(DISPATCH_PHONE || '0923579382').trim();
+  const cleanTelHref = rawPhone.replace(/[^0-9+*#]/g, '') || '0923579382';
+  const safePhone = escapeHtml(rawPhone);
+  const safeTelHref = escapeHtml(cleanTelHref);
   const passHiddenInput = adminPass
     ? `<input type="hidden" name="password" value="${safePass}" />`
     : '';
 
+  const discountPercent = Math.round(SHARED_DISCOUNT_RATE * 100);
+
   let adminSectionHtml = `
     <div id="admin" class="box">
-      <h2>የአስተዳደር ክፍል</h2>
+      <h2>አስተዳደር</h2>
       <form method="POST" action="/admin">
-        <div class="field">
-          <label for="adminPass">የይለፍ ቃል</label>
-          <input id="adminPass" name="password" type="password" value="${safePass}" required />
-        </div>
-        <button type="submit" class="btn-blue">ግባ / አሳይ</button>
+        <label for="adminPass">የይለፍ ቃል</label>
+        <input id="adminPass" name="password" type="password" value="${safePass}" required />
+        <button type="submit" class="btn-blue">ግባ</button>
       </form>
   `;
 
@@ -274,10 +338,14 @@ function renderPage({ notice = '', noticeOk = true, adminPass = '', rides = [], 
     if (!rides.length) {
       adminSectionHtml += `<p>ምንም የጉዞ ጥያቄ የለም።</p>`;
     } else {
-      adminSectionHtml += rides.map((r) => `
+      adminSectionHtml += rides.map((r) => {
+        const modeText = r.rideModeText || rideModeLabel(r.rideMode);
+        const fareText = r.estimatedFare != null ? `${r.estimatedFare} ብር` : `${BASE_FARE} ብር`;
+        return `
         <div class="item">
           <div><b>${escapeHtml(r.name)}</b> (${escapeHtml(r.phone)}) - ${escapeHtml(statusLabel(r.status))}</div>
           <div>${escapeHtml(r.pickup)} -> ${escapeHtml(r.dropoff)}</div>
+          <div>${escapeHtml(modeText)} | <b>${escapeHtml(fareText)}</b></div>
           <form method="POST" action="/admin/rides/${escapeHtml(String(r._id))}/status">
             ${passHiddenInput}
             <input type="hidden" name="status" value="accepted" />
@@ -293,10 +361,11 @@ function renderPage({ notice = '', noticeOk = true, adminPass = '', rides = [], 
             <button type="submit" class="btn-red">አጥፋ</button>
           </form>
         </div>
-      `).join('');
+      `;
+      }).join('');
     }
 
-    adminSectionHtml += `<h3>የተመዘገቡ አሽከርካሪዎች</h3>`;
+    adminSectionHtml += `<h3>አሽከርካሪዎች</h3>`;
     if (!drivers.length) {
       adminSectionHtml += `<p>ምንም የተመዘገበ አሽከርካሪ የለም።</p>`;
     } else {
@@ -323,12 +392,9 @@ function renderPage({ notice = '', noticeOk = true, adminPass = '', rides = [], 
   const photosHtml = showPhotos
     ? `
       <div id="photos" class="box">
-        <h2>የጉዞ ፕላስ ፎቶዎች</h2>
-        <p>ጉዞ ፕላስ • Guzo Plus</p>
+        <h2>ፎቶዎች</h2>
         <img src="/1795448273390.jpg" alt="ጉዞ ፕላስ" />
-        <p>የጉዞ ፕላስ ከተማ ማስታወቂያ</p>
         <img src="/1795448572602.jpg" alt="ማስታወቂያ" />
-        <p>በመብራት ላይ የቆመ ጉዞ ፕላስ</p>
         <img src="/1795448585057.jpg" alt="መኪና" />
         <p><a href="/">ወደ መነሻ ይመለሱ</a></p>
       </div>
@@ -347,185 +413,95 @@ function renderPage({ notice = '', noticeOk = true, adminPass = '', rides = [], 
   <meta name="google-site-verification" content="0uqsLANTDpAi_ixeaOjGyYczRGibpgfGZyc0DFEzdjU" />
   <title>ጉዞ ፕላስ | Guzo Plus</title>
   <style>
-    body {
-      margin: 0;
-      padding: 8px;
-      font-family: sans-serif;
-      font-size: 15px;
-      background: #ffffff;
-      color: #111111;
-    }
-    .wrap {
-      max-width: 680px;
-      margin: 0 auto;
-    }
-    h1 {
-      font-size: 20px;
-      margin: 4px 0;
-      color: #15803d;
-    }
-    h2 {
-      font-size: 17px;
-      margin: 12px 0 6px;
-      color: #14532d;
-      border-bottom: 1px solid #cccccc;
-      padding-bottom: 4px;
-    }
-    h3 {
-      font-size: 15px;
-      margin: 10px 0 4px;
-    }
-    p {
-      margin: 4px 0 8px;
-    }
-    .nav {
-      margin: 8px 0 12px;
-    }
-    .nav a {
-      margin-right: 10px;
-      color: #0369a1;
-      font-weight: bold;
-    }
-    .box {
-      border: 1px solid #bbbbbb;
-      padding: 8px;
-      margin-bottom: 12px;
-      background: #fafafa;
-    }
-    .field {
-      margin-bottom: 8px;
-    }
-    label {
-      display: block;
-      font-weight: bold;
-      margin-bottom: 2px;
-    }
-    input, select, button {
-      width: 100%;
-      padding: 7px;
-      font-size: 15px;
-      border: 1px solid #666666;
-    }
-    button {
-      background: #15803d;
-      color: #ffffff;
-      font-weight: bold;
-      margin-top: 4px;
-    }
-    .btn-blue {
-      background: #0369a1;
-    }
-    .btn-red {
-      background: #b91c1c;
-    }
-    .item {
-      border: 1px solid #cccccc;
-      padding: 6px;
-      margin-bottom: 8px;
-      background: #ffffff;
-    }
-    .item form {
-      margin-top: 4px;
-    }
-    .notice {
-      padding: 8px;
-      margin-bottom: 10px;
-      font-weight: bold;
-      border: 1px solid #666666;
-    }
-    .ok {
-      background: #dcfce7;
-      color: #14532d;
-    }
-    .err {
-      background: #fee2e2;
-      color: #991b1b;
-    }
-    img {
-      max-width: 100%;
-      height: auto;
-      display: block;
-      margin: 6px 0;
-    }
-    .foot {
-      margin-top: 14px;
-      font-size: 13px;
-      color: #444444;
-    }
+    body{margin:0;padding:8px;font-family:sans-serif;font-size:15px;background:#fff;color:#111}
+    .wrap{max-width:640px;margin:0 auto}
+    h1{font-size:20px;margin:4px 0;color:#15803d}
+    h2{font-size:17px;margin:10px 0 6px;color:#14532d;border-bottom:1px solid #ccc;padding-bottom:3px}
+    h3{font-size:15px;margin:8px 0 4px}
+    p{margin:4px 0 8px}
+    .nav{margin:8px 0}
+    .nav a{margin-right:10px;color:#0369a1;font-weight:bold}
+    .box{border:1px solid #bbb;padding:8px;margin-bottom:10px;background:#fafafa}
+    label{display:block;font-weight:bold;margin:6px 0 2px}
+    input,select,button{width:100%;padding:7px;font-size:15px;border:1px solid #666;box-sizing:border-box}
+    button{background:#15803d;color:#fff;font-weight:bold;margin-top:6px}
+    .btn-blue{background:#0369a1}
+    .btn-red{background:#b91c1c}
+    .call-btn{display:block;padding:10px;background:#15803d;color:#fff;font-weight:bold;text-decoration:none;text-align:center;margin:4px 0}
+    .item{border:1px solid #ccc;padding:6px;margin-bottom:6px;background:#fff}
+    .notice{padding:8px;margin-bottom:8px;font-weight:bold;border:1px solid #666}
+    .ok{background:#dcfce7;color:#14532d}
+    .err{background:#fee2e2;color:#991b1b}
+    img{max-width:100%;height:auto;display:block;margin:6px 0}
+    .foot{margin-top:12px;font-size:13px;color:#444}
   </style>
 </head>
 <body>
   <div class="wrap">
     <h1>ጉዞ ፕላስ (Guzo Plus)</h1>
-    <p>ፈጣን እና አስተማማኝ የጉዞ አገልግሎት።</p>
+    <a class="call-btn" href="tel:${safeTelHref}">📞 ይደውሉ: ${safePhone}</a>
 
     <div class="nav">
-      <a href="#book">1. ጉዞ ይጠይቁ</a>
-      <a href="#driver">2. አሽከርካሪ ምዝገባ</a>
-      <a href="#admin">3. አስተዳደር</a>
-      <a href="/photos">4. ፎቶዎች</a>
+      <a href="#book">ጉዞ</a>
+      <a href="#driver">አሽከርካሪ</a>
+      <a href="#admin">አስተዳደር</a>
+      <a href="/photos">ፎቶዎች</a>
     </div>
 
     ${noticeBox}
 
     <div id="book" class="box">
-      <h2>የጉዞ ጥያቄ ያስገቡ</h2>
+      <h2>ጉዞ ይጠይቁ</h2>
+      <p>መነሻ ${escapeHtml(String(BASE_FARE))} ብር | ጠዋት +${escapeHtml(String(MORNING_SURCHARGE))} | ማታ +${escapeHtml(String(EVENING_SURCHARGE))} | ሼር ${escapeHtml(String(discountPercent))}% ቅናሽ</p>
       <form method="POST" action="/rides">
-        <div class="field">
-          <label for="name">ሙሉ ስም</label>
-          <input id="name" name="name" type="text" required />
-        </div>
-        <div class="field">
-          <label for="phone">ስልክ ቁጥር</label>
-          <input id="phone" name="phone" type="tel" required />
-        </div>
-        <div class="field">
-          <label for="pickup">መነሻ ቦታ</label>
-          <input id="pickup" name="pickup" type="text" required />
-        </div>
-        <div class="field">
-          <label for="dropoff">መድረሻ ቦታ</label>
-          <input id="dropoff" name="dropoff" type="text" required />
-        </div>
+        <label for="name">ሙሉ ስም</label>
+        <input id="name" name="name" type="text" required />
+        <label for="phone">ስልክ ቁጥር</label>
+        <input id="phone" name="phone" type="tel" required />
+        <label for="pickup">መነሻ</label>
+        <input id="pickup" name="pickup" type="text" required />
+        <label for="dropoff">መድረሻ</label>
+        <input id="dropoff" name="dropoff" type="text" required />
+        <label for="rideMode">ዓይነት</label>
+        <select id="rideMode" name="rideMode" required>
+          <option value="shared">ሼር / ጋራ (${escapeHtml(String(discountPercent))}% ቅናሽ)</option>
+          <option value="solo">የግል (ብቻዬን)</option>
+        </select>
+        <label for="timeSlot">ሰዓት ታሪፍ</label>
+        <select id="timeSlot" name="timeSlot" required>
+          <option value="auto">አሁን ያለው ሰዓት</option>
+          <option value="morning">ጠዋት (+${escapeHtml(String(MORNING_SURCHARGE))} ብር)</option>
+          <option value="evening">ማታ (+${escapeHtml(String(EVENING_SURCHARGE))} ብር)</option>
+          <option value="normal">መደበኛ</option>
+        </select>
         <button type="submit">ጉዞ ይጠይቁ</button>
       </form>
     </div>
 
     <div id="driver" class="box">
-      <h2>የአሽከርካሪ ምዝገባ</h2>
+      <h2>አሽከርካሪ ምዝገባ</h2>
       <form method="POST" action="/drivers">
-        <div class="field">
-          <label for="driverName">የአሽከርካሪ ስም</label>
-          <input id="driverName" name="driverName" type="text" required />
-        </div>
-        <div class="field">
-          <label for="driverPhone">ስልክ ቁጥር</label>
-          <input id="driverPhone" name="driverPhone" type="tel" required />
-        </div>
-        <div class="field">
-          <label for="vehicleType">ተሽከርካሪ</label>
-          <select id="vehicleType" name="vehicleType" required>
-            <option value="Sedan / ሲዳን">Sedan / ሲዳን</option>
-            <option value="Minivan / ሚኒቫን">Minivan / ሚኒቫን</option>
-            <option value="SUV / ኤስ.ዩ.ቪ">SUV / ኤስ.ዩ.ቪ</option>
-            <option value="Motorcycle / ሞተርሳይክል">Motorcycle / ሞተርሳይክል</option>
-          </select>
-        </div>
-        <div class="field">
-          <label for="plateNumber">ሰሌዳ ቁጥር</label>
-          <input id="plateNumber" name="plateNumber" type="text" required />
-        </div>
-        <button type="submit" class="btn-blue">እንደ አሽከርካሪ ይመዝገቡ</button>
+        <label for="driverName">ስም</label>
+        <input id="driverName" name="driverName" type="text" required />
+        <label for="driverPhone">ስልክ ቁጥር</label>
+        <input id="driverPhone" name="driverPhone" type="tel" required />
+        <label for="vehicleType">ተሽከርካሪ</label>
+        <select id="vehicleType" name="vehicleType" required>
+          <option value="Sedan / ሲዳን">Sedan / ሲዳን</option>
+          <option value="Minivan / ሚኒቫን">Minivan / ሚኒቫን</option>
+          <option value="SUV / ኤስ.ዩ.ቪ">SUV / ኤስ.ዩ.ቪ</option>
+          <option value="Motorcycle / ሞተርሳይክል">Motorcycle / ሞተርሳይክል</option>
+        </select>
+        <label for="plateNumber">ሰሌዳ</label>
+        <input id="plateNumber" name="plateNumber" type="text" required />
+        <button type="submit" class="btn-blue">ይመዝገቡ</button>
       </form>
     </div>
 
     ${adminSectionHtml}
-
     ${photosHtml}
 
-    <div class="foot">
-      © 2026 Guzo Plus (ጉዞ ፕላስ) — https://guzo-plus-05wo.onrender.com/
-    </div>
+    <div class="foot">© 2026 Guzo Plus</div>
   </div>
 </body>
 </html>`;
@@ -604,22 +580,34 @@ const server = http.createServer(async (req, res) => {
         const phone = (body.phone || '').trim();
         const pickup = (body.pickup || '').trim();
         const dropoff = (body.dropoff || '').trim();
+        const rideMode = (body.rideMode || 'shared').trim();
+        const timeSlot = (body.timeSlot || 'auto').trim();
 
         if (!name || !phone || !pickup || !dropoff) {
           return sendHtml(res, 400, renderPage({ notice: 'ሁሉንም ባዶ ቦታዎች ይሙሉ።', noticeOk: false }));
         }
+
+        const fareInfo = calculateFare({ rideMode, timeSlot });
 
         const doc = {
           name,
           phone,
           pickup,
           dropoff,
+          rideMode: fareInfo.rideMode,
+          rideModeText: fareInfo.rideModeText,
+          timePeriod: fareInfo.period,
+          periodText: fareInfo.periodText,
+          estimatedFare: fareInfo.estimatedFare,
           status: 'pending',
           createdAt: new Date(),
         };
         await db.collection('rides').insertOne(doc);
         await sendTelegramNotification(doc);
-        return sendHtml(res, 200, renderPage({ notice: 'የጉዞ ጥያቄዎ በተሳካ ሁኔታ ተመዝግቧል!', noticeOk: true }));
+        return sendHtml(res, 200, renderPage({
+          notice: `የጉዞ ጥያቄዎ ተመዝግቧል! (${fareInfo.rideModeText} • ${fareInfo.periodText} • ግምታዊ ዋጋ: ${fareInfo.estimatedFare} ብር)`,
+          noticeOk: true,
+        }));
       }
 
       if (cleanUrl === '/drivers') {
@@ -761,3 +749,4 @@ server.listen(PORT, async () => {
   await connectAtlas();
   pollTelegramUpdates();
 });
+
