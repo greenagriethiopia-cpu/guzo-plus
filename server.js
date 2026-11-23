@@ -13,6 +13,8 @@ const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID || '';
 
 let db = null;
 let dbStatus = 'Not configured (set MONGODB_URI)';
+let telegramOffset = 0;
+let telegramPollingStarted = false;
 
 async function connectAtlas() {
   if (!MONGO_URI) {
@@ -37,8 +39,9 @@ async function connectAtlas() {
   }
 }
 
-async function sendTelegramText(text) {
-  if (!TELEGRAM_BOT_TOKEN || !TELEGRAM_CHAT_ID) {
+async function sendTelegramText(chatId, text) {
+  const targetChat = chatId || TELEGRAM_CHAT_ID;
+  if (!TELEGRAM_BOT_TOKEN || !targetChat) {
     return;
   }
 
@@ -48,7 +51,7 @@ async function sendTelegramText(text) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        chat_id: TELEGRAM_CHAT_ID,
+        chat_id: targetChat,
         text,
         parse_mode: 'Markdown',
       }),
@@ -71,7 +74,7 @@ async function sendTelegramNotification(ride) {
     `🎯 *መድረሻ:* ${ride.dropoff}`,
     `📌 *ሁኔታ:* ${ride.status || 'pending'}`,
   ].join('\n');
-  await sendTelegramText(text);
+  await sendTelegramText(TELEGRAM_CHAT_ID, text);
 }
 
 async function sendDriverNotification(driver) {
@@ -83,7 +86,113 @@ async function sendDriverNotification(driver) {
     `🔢 *ሰሌዳ:* ${driver.plateNumber}`,
     `📌 *ሁኔታ:* ${driver.status || 'pending'}`,
   ].join('\n');
-  await sendTelegramText(text);
+  await sendTelegramText(TELEGRAM_CHAT_ID, text);
+}
+
+async function handleTelegramMessage(msg) {
+  if (!msg || !msg.chat) return;
+  const chatId = msg.chat.id;
+  const rawText = (msg.text || '').trim();
+  const lower = rawText.toLowerCase();
+
+  if (lower === '/start' || lower === 'start' || lower === '/menu' || lower === 'menu') {
+    const menuText = [
+      '🚕 *እንኳን ወደ ጉዞ ፕላስ (Guzo Plus) በደህና መጡ!*',
+      '',
+      'የሚፈልጉትን አማራጭ ቁጥር ይላኩ፦',
+      '1 — 📋 የቅርብ ጊዜ የጉዞ ጥያቄዎች',
+      '2 — 🚗 የተመዘገቡ አሽከርካሪዎች',
+      '🌐 ድረ-ገጽ፡ https://guzo-plus-05wo.onrender.com/',
+    ].join('\n');
+    await sendTelegramText(chatId, menuText);
+    return;
+  }
+
+  if (rawText === '1' || lower === '/rides') {
+    if (!db) {
+      await sendTelegramText(chatId, '⚠️ ዳታቤዝ እስካሁን አልተገናኘም።');
+      return;
+    }
+    const rides = await db.collection('rides').find().sort({ createdAt: -1 }).limit(10).toArray();
+    if (!rides.length) {
+      await sendTelegramText(chatId, 'ℹ️ እስካሁን የተመዘገበ የጉዞ ጥያቄ የለም።');
+      return;
+    }
+    const lines = ['📋 *የቅርብ ጊዜ የጉዞ ጥያቄዎች:*', ''];
+    rides.forEach((r, idx) => {
+      lines.push(
+        `${idx + 1}. *${r.name}* (${r.phone}) — _${r.status || 'pending'}_`,
+        `   📍 ${r.pickup} → 🎯 ${r.dropoff}`
+      );
+    });
+    await sendTelegramText(chatId, lines.join('\n'));
+    return;
+  }
+
+  if (rawText === '2' || lower === '/drivers') {
+    if (!db) {
+      await sendTelegramText(chatId, '⚠️ ዳታቤዝ እስካሁን አልተገናኘም።');
+      return;
+    }
+    const drivers = await db.collection('drivers').find().sort({ createdAt: -1 }).limit(10).toArray();
+    if (!drivers.length) {
+      await sendTelegramText(chatId, 'ℹ️ እስካሁን የተመዘገበ አሽከርካሪ የለም።');
+      return;
+    }
+    const lines = ['🚗 *የተመዘገቡ አሽከርካሪዎች:*', ''];
+    drivers.forEach((d, idx) => {
+      lines.push(
+        `${idx + 1}. *${d.name}* (${d.phone}) — _${d.status || 'pending'}_`,
+        `   🚘 ${d.vehicleType} | 🔢 ${d.plateNumber}`
+      );
+    });
+    await sendTelegramText(chatId, lines.join('\n'));
+    return;
+  }
+
+  if (rawText) {
+    await sendTelegramText(
+      chatId,
+      'ℹ️ ሜኑ ለማየት */start* ወይም *start* ይላኩ፣ ወይም *1* (ጉዞዎች) / *2* (አሽከርካሪዎች) ይምረጡ።'
+    );
+  }
+}
+
+async function pollTelegramUpdates() {
+  if (!TELEGRAM_BOT_TOKEN || telegramPollingStarted) return;
+  telegramPollingStarted = true;
+
+  try {
+    await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/deleteWebhook`);
+  } catch {}
+
+  console.log('Telegram bot polling started.');
+
+  while (true) {
+    try {
+      const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getUpdates?offset=${telegramOffset}&timeout=25`;
+      const res = await fetch(url);
+      if (!res.ok) {
+        const errText = await res.text();
+        console.warn('Telegram getUpdates status:', res.status, errText);
+        await new Promise((r) => setTimeout(r, 4000));
+        continue;
+      }
+      const data = await res.json();
+      const updates = Array.isArray(data.result) ? data.result : [];
+      for (const upd of updates) {
+        if (typeof upd.update_id === 'number') {
+          telegramOffset = upd.update_id + 1;
+        }
+        if (upd.message) {
+          await handleTelegramMessage(upd.message);
+        }
+      }
+    } catch (err) {
+      console.error('Telegram polling loop error:', err.message);
+      await new Promise((r) => setTimeout(r, 4000));
+    }
+  }
 }
 
 function readJsonBody(req) {
@@ -739,175 +848,5 @@ const server = http.createServer(async (req, res) => {
       }
       const filePath = path.join(__dirname, 'public', safeRel);
       if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
-        const ext = path.extname(filePath).toLowerCase();
-        const mimeTypes = {
-          '.jpg': 'image/jpeg',
-          '.jpeg': 'image/jpeg',
-          '.png': 'image/png',
-          '.webp': 'image/webp',
-        };
-        res.writeHead(200, { 'Content-Type': mimeTypes[ext] || 'application/octet-stream' });
-        return fs.createReadStream(filePath).pipe(res);
-      }
-      res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
-      return res.end('Image not found');
-    }
-  }
-
-  if (cleanUrl === '/health/db' && req.method === 'GET') {
-    return sendJson(res, 200, { status: dbStatus });
-  }
-
-  if (cleanUrl === '/api/rides' && req.method === 'GET') {
-    if (!isAdminAuthorized(req)) {
-      return sendJson(res, 401, { error: 'ያልተፈቀደ (Unauthorized) — ትክክለኛ የይለፍ ቃል ያስገቡ።' });
-    }
-    if (!db) return sendJson(res, 503, { error: 'Database not connected' });
-    const rides = await db.collection('rides').find().sort({ createdAt: -1 }).limit(50).toArray();
-    return sendJson(res, 200, { rides });
-  }
-
-  if (cleanUrl === '/api/rides' && req.method === 'POST') {
-    if (!db) return sendJson(res, 503, { error: 'Database not connected' });
-    try {
-      const body = await readJsonBody(req);
-      const name = (body.name || '').trim();
-      const phone = (body.phone || '').trim();
-      const pickup = (body.pickup || '').trim();
-      const dropoff = (body.dropoff || '').trim();
-
-      if (!name || !phone || !pickup || !dropoff) {
-        return sendJson(res, 400, { error: 'ሁሉንም ባዶ ቦታዎች ይሙሉ።' });
-      }
-
-      const doc = {
-        name,
-        phone,
-        pickup,
-        dropoff,
-        status: 'pending',
-        createdAt: new Date(),
-      };
-
-      const result = await db.collection('rides').insertOne(doc);
-      await sendTelegramNotification(doc);
-      return sendJson(res, 201, { ok: true, id: result.insertedId, ride: doc });
-    } catch (err) {
-      return sendJson(res, 400, { error: err.message || 'Invalid request' });
-    }
-  }
-
-  const rideIdMatch = cleanUrl.match(/^\/api\/rides\/([a-fA-F0-9]{24})$/);
-  if (rideIdMatch) {
-    if (!isAdminAuthorized(req)) {
-      return sendJson(res, 401, { error: 'ያልተፈቀደ (Unauthorized) — ትክክለኛ የይለፍ ቃል ያስገቡ።' });
-    }
-    if (!db) return sendJson(res, 503, { error: 'Database not connected' });
-    const _id = new ObjectId(rideIdMatch[1]);
-
-    if (req.method === 'PATCH') {
-      try {
-        const body = await readJsonBody(req);
-        const allowed = ['pending', 'accepted', 'completed'];
-        if (!allowed.includes(body.status)) {
-          return sendJson(res, 400, { error: 'ልክ ያልሆነ ሁኔታ (status)' });
-        }
-        const result = await db.collection('rides').updateOne(
-          { _id },
-          { $set: { status: body.status, updatedAt: new Date() } }
-        );
-        if (!result.matchedCount) return sendJson(res, 404, { error: 'ጥያቄው አልተገኘም' });
-        return sendJson(res, 200, { ok: true, status: body.status });
-      } catch (err) {
-        return sendJson(res, 400, { error: err.message || 'Invalid request' });
-      }
-    }
-
-    if (req.method === 'DELETE') {
-      const result = await db.collection('rides').deleteOne({ _id });
-      if (!result.deletedCount) return sendJson(res, 404, { error: 'ጥያቄው አልተገኘም' });
-      return sendJson(res, 200, { ok: true });
-    }
-  }
-
-  if (cleanUrl === '/api/drivers' && req.method === 'GET') {
-    if (!isAdminAuthorized(req)) {
-      return sendJson(res, 401, { error: 'ያልተፈቀደ (Unauthorized) — ትክክለኛ የይለፍ ቃል ያስገቡ።' });
-    }
-    if (!db) return sendJson(res, 503, { error: 'Database not connected' });
-    const drivers = await db.collection('drivers').find().sort({ createdAt: -1 }).limit(50).toArray();
-    return sendJson(res, 200, { drivers });
-  }
-
-  if (cleanUrl === '/api/drivers' && req.method === 'POST') {
-    if (!db) return sendJson(res, 503, { error: 'Database not connected' });
-    try {
-      const body = await readJsonBody(req);
-      const name = (body.name || '').trim();
-      const phone = (body.phone || '').trim();
-      const vehicleType = (body.vehicleType || '').trim();
-      const plateNumber = (body.plateNumber || '').trim();
-
-      if (!name || !phone || !vehicleType || !plateNumber) {
-        return sendJson(res, 400, { error: 'ሁሉንም የአሽከርካሪ መረጃዎች ይሙሉ።' });
-      }
-
-      const doc = {
-        name,
-        phone,
-        vehicleType,
-        plateNumber,
-        status: 'pending',
-        createdAt: new Date(),
-      };
-
-      const result = await db.collection('drivers').insertOne(doc);
-      await sendDriverNotification(doc);
-      return sendJson(res, 201, { ok: true, id: result.insertedId, driver: doc });
-    } catch (err) {
-      return sendJson(res, 400, { error: err.message || 'Invalid request' });
-    }
-  }
-
-  const driverIdMatch = cleanUrl.match(/^\/api\/drivers\/([a-fA-F0-9]{24})$/);
-  if (driverIdMatch) {
-    if (!isAdminAuthorized(req)) {
-      return sendJson(res, 401, { error: 'ያልተፈቀደ (Unauthorized) — ትክክለኛ የይለፍ ቃል ያስገቡ።' });
-    }
-    if (!db) return sendJson(res, 503, { error: 'Database not connected' });
-    const _id = new ObjectId(driverIdMatch[1]);
-
-    if (req.method === 'PATCH') {
-      try {
-        const body = await readJsonBody(req);
-        const allowed = ['pending', 'approved'];
-        if (!allowed.includes(body.status)) {
-          return sendJson(res, 400, { error: 'ልክ ያልሆነ ሁኔታ (status)' });
-        }
-        const result = await db.collection('drivers').updateOne(
-          { _id },
-          { $set: { status: body.status, updatedAt: new Date() } }
-        );
-        if (!result.matchedCount) return sendJson(res, 404, { error: 'አሽከርካሪው አልተገኘም' });
-        return sendJson(res, 200, { ok: true, status: body.status });
-      } catch (err) {
-        return sendJson(res, 400, { error: err.message || 'Invalid request' });
-      }
-    }
-
-    if (req.method === 'DELETE') {
-      const result = await db.collection('drivers').deleteOne({ _id });
-      if (!result.deletedCount) return sendJson(res, 404, { error: 'አሽከርካሪው አልተገኘም' });
-      return sendJson(res, 200, { ok: true });
-    }
-  }
-
-  res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-  res.end(htmlPage);
-});
-
-server.listen(PORT, () => {
-  console.log(`Guzo Plus server running on port ${PORT}`);
-  connectAtlas();
-});
+        const ext = path.extname(file
 
