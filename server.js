@@ -1,3 +1,4 @@
+
 const http = require('node:http');
 const crypto = require('node:crypto');
 const fs = require('node:fs');
@@ -11,6 +12,7 @@ const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'guzo2026';
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID || '';
 const DISPATCH_PHONE = process.env.DISPATCH_PHONE || '0923579382';
+const SHORT_CODE = process.env.SHORT_CODE || '';
 
 const BASE_FARE = Number(process.env.BASE_FARE || 200);
 const MORNING_SURCHARGE = Number(process.env.MORNING_SURCHARGE || 50);
@@ -305,12 +307,42 @@ const allowedRootImages = new Set([
   '1795448585057.jpg',
 ]);
 
+const svgIcon = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192">
+  <rect width="192" height="192" rx="36" fill="#15803d"/>
+  <text x="96" y="116" text-anchor="middle" font-size="76" font-family="sans-serif" fill="#ffffff" font-weight="bold">GP</text>
+</svg>`;
+
+const manifestJson = JSON.stringify({
+  name: 'ጉዞ ፕላስ | Guzo Plus',
+  short_name: 'ጉዞ ፕላስ',
+  start_url: '/',
+  scope: '/',
+  display: 'standalone',
+  background_color: '#ffffff',
+  theme_color: '#15803d',
+  icons: [
+    {
+      src: '/icon.svg',
+      sizes: 'any',
+      type: 'image/svg+xml',
+      purpose: 'any maskable',
+    },
+  ],
+});
+
 function renderPage({ notice = '', noticeOk = true, adminPass = '', rides = [], drivers = [], showPhotos = false }) {
   const safePass = escapeHtml(adminPass);
   const rawPhone = String(DISPATCH_PHONE || '0923579382').trim();
   const cleanTelHref = rawPhone.replace(/[^0-9+*#]/g, '') || '0923579382';
   const safePhone = escapeHtml(rawPhone);
   const safeTelHref = escapeHtml(cleanTelHref);
+
+  const rawShort = String(SHORT_CODE || '').trim();
+  const cleanShortHref = rawShort.replace(/[^0-9+*#]/g, '');
+  const shortCodeBtnHtml = cleanShortHref
+    ? `<a class="call-btn btn-blue" href="tel:${escapeHtml(cleanShortHref)}">⚡ አጭር ቁጥር ይደውሉ: ${escapeHtml(rawShort)}</a>`
+    : '';
+
   const passHiddenInput = adminPass
     ? `<input type="hidden" name="password" value="${safePass}" />`
     : '';
@@ -410,7 +442,11 @@ function renderPage({ notice = '', noticeOk = true, adminPass = '', rides = [], 
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#15803d" />
+  <meta name="mobile-web-app-capable" content="yes" />
   <meta name="google-site-verification" content="0uqsLANTDpAi_ixeaOjGyYczRGibpgfGZyc0DFEzdjU" />
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <link rel="icon" href="/icon.svg" type="image/svg+xml" />
   <title>ጉዞ ፕላስ | Guzo Plus</title>
   <style>
     body{margin:0;padding:8px;font-family:sans-serif;font-size:15px;background:#fff;color:#111}
@@ -423,11 +459,11 @@ function renderPage({ notice = '', noticeOk = true, adminPass = '', rides = [], 
     .nav a{margin-right:10px;color:#0369a1;font-weight:bold}
     .box{border:1px solid #bbb;padding:8px;margin-bottom:10px;background:#fafafa}
     label{display:block;font-weight:bold;margin:6px 0 2px}
-    input,select,button{width:100%;padding:7px;font-size:15px;border:1px solid #666;box-sizing:border-box}
-    button{background:#15803d;color:#fff;font-weight:bold;margin-top:6px}
+    input,select,button{width:100%;padding:8px;font-size:15px;border:1px solid #666;box-sizing:border-box}
+    button{background:#15803d;color:#fff;font-weight:bold;margin-top:6px;min-height:42px}
     .btn-blue{background:#0369a1}
     .btn-red{background:#b91c1c}
-    .call-btn{display:block;padding:10px;background:#15803d;color:#fff;font-weight:bold;text-decoration:none;text-align:center;margin:4px 0}
+    .call-btn{display:block;padding:11px;background:#15803d;color:#fff;font-weight:bold;text-decoration:none;text-align:center;margin:4px 0;min-height:22px}
     .item{border:1px solid #ccc;padding:6px;margin-bottom:6px;background:#fff}
     .notice{padding:8px;margin-bottom:8px;font-weight:bold;border:1px solid #666}
     .ok{background:#dcfce7;color:#14532d}
@@ -439,7 +475,11 @@ function renderPage({ notice = '', noticeOk = true, adminPass = '', rides = [], 
 <body>
   <div class="wrap">
     <h1>ጉዞ ፕላስ (Guzo Plus)</h1>
-    <a class="call-btn" href="tel:${safeTelHref}">📞 ይደውሉ: ${safePhone}</a>
+    <div class="box">
+      <b>በአንድ ንክኪ ይደውሉ (አንድሮይድ እና ሁሉም ስልክ):</b>
+      <a class="call-btn" href="tel:${safeTelHref}">📞 ይደውሉ: ${safePhone}</a>
+      ${shortCodeBtnHtml}
+    </div>
 
     <div class="nav">
       <a href="#book">ጉዞ</a>
@@ -501,7 +541,7 @@ function renderPage({ notice = '', noticeOk = true, adminPass = '', rides = [], 
     ${adminSectionHtml}
     ${photosHtml}
 
-    <div class="foot">© 2026 Guzo Plus</div>
+    <div class="foot">© 2026 Guzo Plus — በአንድሮይድ Chrome ላይ "Add to Home screen" በመጠቀም እንደ ቀላል App ማስቀመጥ ይቻላል።</div>
   </div>
 </body>
 </html>`;
@@ -525,6 +565,16 @@ const server = http.createServer(async (req, res) => {
   const cleanUrl = (req.url || '/').split('?')[0];
 
   if (req.method === 'GET') {
+    if (cleanUrl === '/manifest.webmanifest' || cleanUrl === '/manifest.json') {
+      res.writeHead(200, { 'Content-Type': 'application/manifest+json; charset=utf-8' });
+      return res.end(manifestJson);
+    }
+
+    if (cleanUrl === '/icon.svg') {
+      res.writeHead(200, { 'Content-Type': 'image/svg+xml; charset=utf-8' });
+      return res.end(svgIcon);
+    }
+
     const rootFile = cleanUrl.replace(/^\/+/, '');
     if (allowedRootImages.has(rootFile)) {
       const filePath = path.join(__dirname, rootFile);
@@ -749,4 +799,3 @@ server.listen(PORT, async () => {
   await connectAtlas();
   pollTelegramUpdates();
 });
-
