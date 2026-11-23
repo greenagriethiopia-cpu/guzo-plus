@@ -1,6 +1,6 @@
 
 const http = require('node:http');
-const { MongoClient } = require('mongodb');
+const { MongoClient, ObjectId } = require('mongodb');
 
 const PORT = process.env.PORT || 3000;
 const MONGO_URI = process.env.MONGODB_URI || process.env.MONGO_URI || '';
@@ -53,6 +53,11 @@ function readJsonBody(req) {
   });
 }
 
+function sendJson(res, statusCode, data) {
+  res.writeHead(statusCode, { 'Content-Type': 'application/json; charset=utf-8' });
+  res.end(JSON.stringify(data));
+}
+
 const htmlPage = `<!DOCTYPE html>
 <html lang="am">
 <head>
@@ -70,8 +75,8 @@ const htmlPage = `<!DOCTYPE html>
       line-height: 1.6;
     }
     .hero {
-      max-width: 720px;
-      margin: 40px auto;
+      max-width: 780px;
+      margin: 36px auto;
       background: #ffffff;
       padding: 32px 24px;
       border-radius: 16px;
@@ -86,7 +91,7 @@ const htmlPage = `<!DOCTYPE html>
       border-radius: 999px;
       font-size: 13px;
       font-weight: bold;
-      margin-bottom: 14px;
+      margin-bottom: 12px;
     }
     h1 {
       margin: 0 0 10px;
@@ -121,15 +126,15 @@ const htmlPage = `<!DOCTYPE html>
       font-size: 13px;
       color: #4b5563;
     }
-    .booking-card {
-      margin-top: 24px;
+    .card {
+      margin-top: 22px;
       padding: 20px;
       background: #f8faf9;
       border: 1px solid #d1fae5;
       border-radius: 14px;
       text-align: left;
     }
-    .booking-card h2 {
+    .card h2 {
       margin: 0 0 14px;
       font-size: 20px;
       color: #14532d;
@@ -166,11 +171,75 @@ const htmlPage = `<!DOCTYPE html>
     .btn:hover {
       background: #166534;
     }
-    #msg {
-      margin-top: 12px;
+    .btn-sm {
+      width: auto;
+      padding: 6px 10px;
+      font-size: 12px;
+      border-radius: 6px;
+      margin-right: 6px;
+      margin-top: 6px;
+    }
+    .btn-secondary {
+      background: #0369a1;
+    }
+    .btn-secondary:hover {
+      background: #075985;
+    }
+    .btn-danger {
+      background: #b91c1c;
+    }
+    .btn-danger:hover {
+      background: #991b1b;
+    }
+    #msg, #adminMsg {
+      margin-top: 10px;
       font-size: 14px;
       font-weight: bold;
       text-align: center;
+    }
+    .admin-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+    .ride-item {
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
+      padding: 12px;
+      margin-bottom: 10px;
+    }
+    .ride-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .status-pill {
+      display: inline-block;
+      padding: 2px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: bold;
+      background: #fef3c7;
+      color: #92400e;
+    }
+    .status-accepted {
+      background: #dbeafe;
+      color: #1e40af;
+    }
+    .status-completed {
+      background: #dcfce7;
+      color: #166534;
+    }
+    .ride-meta {
+      font-size: 13px;
+      color: #374151;
+      margin-top: 6px;
     }
     .footer {
       margin-top: 24px;
@@ -203,7 +272,7 @@ const htmlPage = `<!DOCTYPE html>
       </div>
     </section>
 
-    <section id="book" class="booking-card">
+    <section id="book" class="card">
       <h2>የጉዞ ጥያቄ ያስገቡ (Request a Ride)</h2>
       <form id="rideForm">
         <div class="field">
@@ -227,6 +296,15 @@ const htmlPage = `<!DOCTYPE html>
       <div id="msg"></div>
     </section>
 
+    <section id="admin" class="card">
+      <div class="admin-header">
+        <h2 style="margin:0;">የአስተዳደር ክፍል — የጉዞ ጥያቄዎች</h2>
+        <button id="refreshRides" class="btn btn-sm btn-secondary" type="button">ዝርዝር አድስ</button>
+      </div>
+      <div id="adminMsg"></div>
+      <div id="ridesList"></div>
+    </section>
+
     <div class="footer">
       © 2026 Guzo Plus (ጉዞ ፕላስ) — https://guzo-plus-05wo.onrender.com/
     </div>
@@ -235,6 +313,91 @@ const htmlPage = `<!DOCTYPE html>
   <script>
     const form = document.getElementById('rideForm');
     const msg = document.getElementById('msg');
+    const ridesList = document.getElementById('ridesList');
+    const adminMsg = document.getElementById('adminMsg');
+    const refreshBtn = document.getElementById('refreshRides');
+
+    function escapeHtml(str) {
+      return String(str || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    function statusLabel(status) {
+      if (status === 'accepted') return 'ተቀባይነት አግኝቷል';
+      if (status === 'completed') return 'ተጠናቋል';
+      return 'በመጠባበቅ ላይ';
+    }
+
+    function statusClass(status) {
+      if (status === 'accepted') return 'status-pill status-accepted';
+      if (status === 'completed') return 'status-pill status-completed';
+      return 'status-pill';
+    }
+
+    async function loadRides() {
+      adminMsg.style.color = '#374151';
+      adminMsg.textContent = 'ጥያቄዎች እየተጫኑ ነው...';
+      try {
+        const res = await fetch('/api/rides');
+        const data = await res.json();
+        if (!res.ok) {
+          adminMsg.style.color = '#b91c1c';
+          adminMsg.textContent = data.error || 'ዝርዝሩን ማምጣት አልተቻለም።';
+          ridesList.innerHTML = '';
+          return;
+        }
+        adminMsg.textContent = '';
+        const rides = data.rides || [];
+        if (!rides.length) {
+          ridesList.innerHTML = '<p style="text-align:center;color:#6b7280;">እስካሁን የተመዘገበ የጉዞ ጥያቄ የለም።</p>';
+          return;
+        }
+        ridesList.innerHTML = rides.map((r) => \`
+          <div class="ride-item">
+            <div class="ride-top">
+              <strong>\${escapeHtml(r.name)} (\${escapeHtml(r.phone)})</strong>
+              <span class="\${statusClass(r.status)}">\${statusLabel(r.status)}</span>
+            </div>
+            <div class="ride-meta">
+              መነሻ፡ <strong>\${escapeHtml(r.pickup)}</strong> → መድረሻ፡ <strong>\${escapeHtml(r.dropoff)}</strong>
+            </div>
+            <div>
+              <button class="btn btn-sm btn-secondary" type="button" onclick="updateStatus('\${r._id}', 'accepted')">ተቀበል</button>
+              <button class="btn btn-sm" type="button" onclick="updateStatus('\${r._id}', 'completed')">አጠናቅቅ</button>
+              <button class="btn btn-sm btn-danger" type="button" onclick="deleteRide('\${r._id}')">አጥፋ</button>
+            </div>
+          </div>
+        \`).join('');
+      } catch {
+        adminMsg.style.color = '#b91c1c';
+        adminMsg.textContent = 'ዝርዝሩን ሲጫን የኔትወርክ ስህተት አጋጥሟል።';
+      }
+    }
+
+    window.updateStatus = async function(id, status) {
+      try {
+        const res = await fetch('/api/rides/' + encodeURIComponent(id), {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status }),
+        });
+        if (res.ok) loadRides();
+      } catch {}
+    };
+
+    window.deleteRide = async function(id) {
+      try {
+        const res = await fetch('/api/rides/' + encodeURIComponent(id), {
+          method: 'DELETE',
+        });
+        if (res.ok) loadRides();
+      } catch {}
+    };
+
+    refreshBtn.addEventListener('click', loadRides);
 
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -263,40 +426,33 @@ const htmlPage = `<!DOCTYPE html>
         msg.style.color = '#15803d';
         msg.textContent = 'የጉዞ ጥያቄዎ በተሳካ ሁኔታ ተመዝግቧል!';
         form.reset();
+        loadRides();
       } catch {
         msg.style.color = '#b91c1c';
         msg.textContent = 'የኔትወርክ ስህተት አጋጥሟል።';
       }
     });
+
+    loadRides();
   </script>
 </body>
 </html>`;
 
 const server = http.createServer(async (req, res) => {
-  if (req.url === '/health/db' && req.method === 'GET') {
-    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-    res.end(JSON.stringify({ status: dbStatus }));
-    return;
+  const cleanUrl = (req.url || '/').split('?')[0];
+
+  if (cleanUrl === '/health/db' && req.method === 'GET') {
+    return sendJson(res, 200, { status: dbStatus });
   }
 
-  if (req.url === '/api/rides' && req.method === 'GET') {
-    if (!db) {
-      res.writeHead(503, { 'Content-Type': 'application/json; charset=utf-8' });
-      res.end(JSON.stringify({ error: 'Database not connected' }));
-      return;
-    }
-    const rides = await db.collection('rides').find().sort({ createdAt: -1 }).limit(20).toArray();
-    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-    res.end(JSON.stringify({ rides }));
-    return;
+  if (cleanUrl === '/api/rides' && req.method === 'GET') {
+    if (!db) return sendJson(res, 503, { error: 'Database not connected' });
+    const rides = await db.collection('rides').find().sort({ createdAt: -1 }).limit(50).toArray();
+    return sendJson(res, 200, { rides });
   }
 
-  if (req.url === '/api/rides' && req.method === 'POST') {
-    if (!db) {
-      res.writeHead(503, { 'Content-Type': 'application/json; charset=utf-8' });
-      res.end(JSON.stringify({ error: 'Database not connected' }));
-      return;
-    }
+  if (cleanUrl === '/api/rides' && req.method === 'POST') {
+    if (!db) return sendJson(res, 503, { error: 'Database not connected' });
     try {
       const body = await readJsonBody(req);
       const name = (body.name || '').trim();
@@ -305,9 +461,7 @@ const server = http.createServer(async (req, res) => {
       const dropoff = (body.dropoff || '').trim();
 
       if (!name || !phone || !pickup || !dropoff) {
-        res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
-        res.end(JSON.stringify({ error: 'ሁሉንም ባዶ ቦታዎች ይሙሉ።' }));
-        return;
+        return sendJson(res, 400, { error: 'ሁሉንም ባዶ ቦታዎች ይሙሉ።' });
       }
 
       const doc = {
@@ -320,13 +474,40 @@ const server = http.createServer(async (req, res) => {
       };
 
       const result = await db.collection('rides').insertOne(doc);
-      res.writeHead(201, { 'Content-Type': 'application/json; charset=utf-8' });
-      res.end(JSON.stringify({ ok: true, id: result.insertedId, ride: doc }));
+      return sendJson(res, 201, { ok: true, id: result.insertedId, ride: doc });
     } catch (err) {
-      res.writeHead(400, { 'Content-Type': 'application/json; charset=utf-8' });
-      res.end(JSON.stringify({ error: err.message || 'Invalid request' }));
+      return sendJson(res, 400, { error: err.message || 'Invalid request' });
     }
-    return;
+  }
+
+  const rideIdMatch = cleanUrl.match(/^\/api\/rides\/([a-fA-F0-9]{24})$/);
+  if (rideIdMatch) {
+    if (!db) return sendJson(res, 503, { error: 'Database not connected' });
+    const _id = new ObjectId(rideIdMatch[1]);
+
+    if (req.method === 'PATCH') {
+      try {
+        const body = await readJsonBody(req);
+        const allowed = ['pending', 'accepted', 'completed'];
+        if (!allowed.includes(body.status)) {
+          return sendJson(res, 400, { error: 'ልክ ያልሆነ ሁኔታ (status)' });
+        }
+        const result = await db.collection('rides').updateOne(
+          { _id },
+          { $set: { status: body.status, updatedAt: new Date() } }
+        );
+        if (!result.matchedCount) return sendJson(res, 404, { error: 'ጥያቄው አልተገኘም' });
+        return sendJson(res, 200, { ok: true, status: body.status });
+      } catch (err) {
+        return sendJson(res, 400, { error: err.message || 'Invalid request' });
+      }
+    }
+
+    if (req.method === 'DELETE') {
+      const result = await db.collection('rides').deleteOne({ _id });
+      if (!result.deletedCount) return sendJson(res, 404, { error: 'ጥያቄው አልተገኘም' });
+      return sendJson(res, 200, { ok: true });
+    }
   }
 
   res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
