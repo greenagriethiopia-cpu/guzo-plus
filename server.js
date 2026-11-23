@@ -1,4 +1,3 @@
-
 const http = require('node:http');
 const crypto = require('node:crypto');
 const fs = require('node:fs');
@@ -70,6 +69,12 @@ function isAdminAuthorized(req) {
   return crypto.timingSafeEqual(a, b);
 }
 
+const allowedRootImages = new Set([
+  '1795448273390.jpg',
+  '1795448572602.jpg',
+  '1795448585057.jpg',
+]);
+
 const htmlPage = `<!DOCTYPE html>
 <html lang="am">
 <head>
@@ -117,7 +122,7 @@ const htmlPage = `<!DOCTYPE html>
     }
     .gallery {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
       gap: 14px;
       margin: 20px 0 24px;
     }
@@ -130,7 +135,7 @@ const htmlPage = `<!DOCTYPE html>
     }
     .gallery img {
       width: 100%;
-      height: 195px;
+      height: 185px;
       object-fit: cover;
       display: block;
     }
@@ -296,12 +301,16 @@ const htmlPage = `<!DOCTYPE html>
 
     <section class="gallery">
       <figure>
-        <img src="/public/guzo-stop.jpg" alt="ጉዞ ፕላስ መብራት ላይ የቆመ መኪና" />
-        <figcaption>በመብራት ላይ የቆመ ጉዞ ፕላስ</figcaption>
+        <img src="/1795448273390.jpg" alt="ጉዞ ፕላስ የከተማ ትራንስፖርት" />
+        <figcaption>ጉዞ ፕላስ • Guzo Plus</figcaption>
       </figure>
       <figure>
-        <img src="/public/guzo-billboard.jpg" alt="ጉዞ ፕላስ ትልቅ ስክሪን ማስታወቂያ" />
+        <img src="/1795448572602.jpg" alt="ጉዞ ፕላስ ትልቅ ስክሪን ማስታወቂያ" />
         <figcaption>የጉዞ ፕላስ ከተማ ማስታወቂያ</figcaption>
+      </figure>
+      <figure>
+        <img src="/1795448585057.jpg" alt="ጉዞ ፕላስ በመብራት ላይ የቆመ መኪና" />
+        <figcaption>በመብራት ላይ የቆመ ጉዞ ፕላስ</figcaption>
       </figure>
     </section>
 
@@ -534,26 +543,37 @@ const htmlPage = `<!DOCTYPE html>
 const server = http.createServer(async (req, res) => {
   const cleanUrl = (req.url || '/').split('?')[0];
 
-  if (cleanUrl.startsWith('/public/') && req.method === 'GET') {
-    const safeRel = path.normalize(cleanUrl.replace(/^\/public\//, ''));
-    if (safeRel.startsWith('..')) {
-      res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' });
-      return res.end('Forbidden');
+  if (req.method === 'GET') {
+    const rootFile = cleanUrl.replace(/^\/+/, '');
+    if (allowedRootImages.has(rootFile)) {
+      const filePath = path.join(__dirname, rootFile);
+      if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
+        res.writeHead(200, { 'Content-Type': 'image/jpeg' });
+        return fs.createReadStream(filePath).pipe(res);
+      }
     }
-    const filePath = path.join(__dirname, 'public', safeRel);
-    if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
-      const ext = path.extname(filePath).toLowerCase();
-      const mimeTypes = {
-        '.jpg': 'image/jpeg',
-        '.jpeg': 'image/jpeg',
-        '.png': 'image/png',
-        '.webp': 'image/webp',
-      };
-      res.writeHead(200, { 'Content-Type': mimeTypes[ext] || 'application/octet-stream' });
-      return fs.createReadStream(filePath).pipe(res);
+
+    if (cleanUrl.startsWith('/public/')) {
+      const safeRel = path.normalize(cleanUrl.replace(/^\/public\//, ''));
+      if (safeRel.startsWith('..')) {
+        res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' });
+        return res.end('Forbidden');
+      }
+      const filePath = path.join(__dirname, 'public', safeRel);
+      if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
+        const ext = path.extname(filePath).toLowerCase();
+        const mimeTypes = {
+          '.jpg': 'image/jpeg',
+          '.jpeg': 'image/jpeg',
+          '.png': 'image/png',
+          '.webp': 'image/webp',
+        };
+        res.writeHead(200, { 'Content-Type': mimeTypes[ext] || 'application/octet-stream' });
+        return fs.createReadStream(filePath).pipe(res);
+      }
+      res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+      return res.end('Image not found');
     }
-    res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
-    return res.end('Image not found');
   }
 
   if (cleanUrl === '/health/db' && req.method === 'GET') {
@@ -639,3 +659,4 @@ server.listen(PORT, () => {
   console.log(`Guzo Plus server running on port ${PORT}`);
   connectAtlas();
 });
+
