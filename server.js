@@ -243,295 +243,149 @@ const htmlPage = `<!DOCTYPE html>
   <meta name="google-site-verification" content="0uqsLANTDpAi_ixeaOjGyYczRGibpgfGZyc0DFEzdjU" />
   <title>ጉዞ ፕላስ | Guzo Plus</title>
   <style>
-    * { box-sizing: border-box; }
     body {
       margin: 0;
-      font-family: Arial, sans-serif;
-      background: #f3f7f4;
-      color: #16241c;
-      line-height: 1.6;
-    }
-    .hero {
-      max-width: 780px;
-      margin: 36px auto;
+      padding: 8px;
+      font-family: sans-serif;
+      font-size: 15px;
       background: #ffffff;
-      padding: 32px 24px;
-      border-radius: 16px;
-      box-shadow: 0 10px 28px rgba(0, 0, 0, 0.08);
-      text-align: center;
+      color: #111111;
     }
-    .badge {
-      display: inline-block;
-      background: #dcfce7;
-      color: #166534;
-      padding: 6px 14px;
-      border-radius: 999px;
-      font-size: 13px;
-      font-weight: bold;
-      margin-bottom: 12px;
+    .wrap {
+      max-width: 680px;
+      margin: 0 auto;
     }
     h1 {
-      margin: 0 0 10px;
-      font-size: 30px;
+      font-size: 20px;
+      margin: 4px 0;
       color: #15803d;
     }
-    .lead {
-      font-size: 16px;
-      color: #374151;
-      margin: 0 0 22px;
+    h2 {
+      font-size: 17px;
+      margin: 14px 0 6px;
+      color: #14532d;
+      border-bottom: 1px solid #cccccc;
+      padding-bottom: 4px;
     }
-    .gallery {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-      gap: 14px;
-      margin: 20px 0 24px;
+    h3 {
+      font-size: 15px;
+      margin: 10px 0 4px;
     }
-    .gallery figure {
-      margin: 0;
-      background: #f9fafb;
-      border: 1px solid #e5e7eb;
-      border-radius: 12px;
-      overflow: hidden;
+    p {
+      margin: 4px 0 8px;
     }
-    .gallery img {
-      width: 100%;
-      height: 185px;
-      object-fit: cover;
-      display: block;
+    .nav {
+      margin: 8px 0 12px;
     }
-    .gallery figcaption {
-      padding: 8px 10px;
-      font-size: 13px;
-      color: #374151;
-    }
-    .features {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-      gap: 12px;
-      margin: 20px 0 26px;
-      text-align: left;
+    .nav a {
+      margin-right: 10px;
+      color: #0369a1;
+      font-weight: bold;
     }
     .box {
-      background: #f9fafb;
-      border: 1px solid #e5e7eb;
-      border-radius: 12px;
-      padding: 14px;
-    }
-    .box h3 {
-      margin: 0 0 4px;
-      font-size: 15px;
-      color: #111827;
-    }
-    .box p {
-      margin: 0;
-      font-size: 13px;
-      color: #4b5563;
-    }
-    .card {
-      margin-top: 22px;
-      padding: 20px;
-      background: #f8faf9;
-      border: 1px solid #d1fae5;
-      border-radius: 14px;
-      text-align: left;
-    }
-    .card h2 {
-      margin: 0 0 14px;
-      font-size: 20px;
-      color: #14532d;
-      text-align: center;
-    }
-    .card h3 {
-      margin: 18px 0 10px;
-      font-size: 16px;
-      color: #14532d;
+      border: 1px solid #bbbbbb;
+      padding: 8px;
+      margin-bottom: 12px;
+      background: #fafafa;
     }
     .field {
-      margin-bottom: 12px;
+      margin-bottom: 8px;
     }
     label {
       display: block;
-      font-size: 13px;
       font-weight: bold;
-      margin-bottom: 4px;
-      color: #1f2937;
+      margin-bottom: 2px;
     }
-    input, select {
+    input, select, button {
       width: 100%;
-      padding: 10px 12px;
-      border: 1px solid #cbd5e1;
-      border-radius: 8px;
+      padding: 7px;
       font-size: 15px;
-      background: #ffffff;
+      border: 1px solid #666666;
     }
-    .btn {
-      width: 100%;
+    button {
       background: #15803d;
       color: #ffffff;
-      border: none;
-      padding: 12px 20px;
-      border-radius: 10px;
-      font-size: 16px;
       font-weight: bold;
-      cursor: pointer;
+      margin-top: 4px;
     }
-    .btn:hover {
-      background: #166534;
-    }
-    .btn-sm {
-      width: auto;
-      padding: 7px 12px;
-      font-size: 13px;
-      border-radius: 6px;
-      margin-right: 6px;
-      margin-top: 6px;
-    }
-    .btn-secondary {
+    .btn-blue {
       background: #0369a1;
     }
-    .btn-secondary:hover {
-      background: #075985;
-    }
-    .btn-danger {
+    .btn-red {
       background: #b91c1c;
     }
-    .btn-danger:hover {
-      background: #991b1b;
-    }
-    #msg, #driverMsg, #adminMsg {
-      margin-top: 10px;
-      font-size: 14px;
-      font-weight: bold;
-      text-align: center;
-    }
-    .login-row {
-      display: flex;
-      gap: 8px;
-      flex-wrap: wrap;
-      margin-bottom: 10px;
-    }
-    .login-row input {
-      flex: 1 1 200px;
-    }
-    .ride-item {
+    .item {
+      border: 1px solid #cccccc;
+      padding: 6px;
+      margin-bottom: 6px;
       background: #ffffff;
-      border: 1px solid #e2e8f0;
-      border-radius: 10px;
-      padding: 12px;
-      margin-bottom: 10px;
     }
-    .ride-top {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 8px;
-      flex-wrap: wrap;
-    }
-    .status-pill {
-      display: inline-block;
-      padding: 2px 10px;
-      border-radius: 999px;
-      font-size: 12px;
-      font-weight: bold;
-      background: #fef3c7;
-      color: #92400e;
-    }
-    .status-accepted {
-      background: #dbeafe;
-      color: #1e40af;
-    }
-    .status-completed {
-      background: #dcfce7;
-      color: #166534;
-    }
-    .ride-meta {
-      font-size: 13px;
-      color: #374151;
+    .msg {
       margin-top: 6px;
+      font-weight: bold;
     }
-    .footer {
-      margin-top: 24px;
+    .gallery-box img {
+      max-width: 100%;
+      height: auto;
+      display: block;
+      margin: 6px 0;
+    }
+    .foot {
+      margin-top: 14px;
       font-size: 13px;
-      color: #6b7280;
+      color: #444444;
     }
   </style>
 </head>
 <body>
-  <main class="hero">
-    <div class="badge">ጉዞ ፕላስ • Guzo Plus</div>
-    <h1>ፈጣን እና አስተማማኝ የጉዞ አገልግሎት</h1>
-    <p class="lead">
-      በአዲስ አበባ እና በዙሪያዋ ፈጣን፣ ምቹ እና አስተማማኝ የጉዞና የትራንስፖርት መፍትሄ።<br />
-      Fast, safe, and reliable ride-sharing experience.
-    </p>
+  <div class="wrap">
+    <h1>ጉዞ ፕላስ (Guzo Plus)</h1>
+    <p>ፈጣን እና አስተማማኝ የጉዞ አገልግሎት።</p>
 
-    <section class="gallery">
-      <figure>
-        <img src="/1795448273390.jpg" alt="ጉዞ ፕላስ የከተማ ትራንስፖርት" />
-        <figcaption>ጉዞ ፕላስ • Guzo Plus</figcaption>
-      </figure>
-      <figure>
-        <img src="/1795448572602.jpg" alt="ጉዞ ፕላስ ትልቅ ስክሪን ማስታወቂያ" />
-        <figcaption>የጉዞ ፕላስ ከተማ ማስታወቂያ</figcaption>
-      </figure>
-      <figure>
-        <img src="/1795448585057.jpg" alt="ጉዞ ፕላስ በመብራት ላይ የቆመ መኪና" />
-        <figcaption>በመብራት ላይ የቆመ ጉዞ ፕላስ</figcaption>
-      </figure>
-    </section>
+    <div class="nav">
+      <a href="#book">1. ጉዞ ይጠይቁ</a>
+      <a href="#driver">2. አሽከርካሪ ምዝገባ</a>
+      <a href="#admin">3. አስተዳደር</a>
+      <a href="#photos">4. ፎቶዎች</a>
+    </div>
 
-    <section class="features">
-      <div class="box">
-        <h3>ፈጣን ጥሪ</h3>
-        <p>በቀላሉ እና በፍጥነት ቅርብ ያለ ተሽከርካሪ ያግኙ።</p>
-      </div>
-      <div class="box">
-        <h3>አስተማማኝነት</h3>
-        <p>ግልጽ ክፍያ እና ደህንነቱ የተጠበቀ የጉዞ ልምድ።</p>
-      </div>
-      <div class="box">
-        <h3>ቀላል አጠቃቀም</h3>
-        <p>በስልክ እና በድረ-ገጽ በቀላሉ የሚደረስ አገልግሎት።</p>
-      </div>
-    </section>
-
-    <section id="book" class="card">
-      <h2>የጉዞ ጥያቄ ያስገቡ (Request a Ride)</h2>
+    <div id="book" class="box">
+      <h2>የጉዞ ጥያቄ ያስገቡ</h2>
       <form id="rideForm">
         <div class="field">
           <label for="name">ሙሉ ስም</label>
-          <input id="name" name="name" type="text" required placeholder="ለምሳሌ፡ አበበ ከበደ" />
+          <input id="name" name="name" type="text" required />
         </div>
         <div class="field">
           <label for="phone">ስልክ ቁጥር</label>
-          <input id="phone" name="phone" type="tel" required placeholder="09..." />
+          <input id="phone" name="phone" type="tel" required />
         </div>
         <div class="field">
-          <label for="pickup">መነሻ ቦታ (Pickup)</label>
-          <input id="pickup" name="pickup" type="text" required placeholder="ለምሳሌ፡ ጎተራ" />
+          <label for="pickup">መነሻ ቦታ</label>
+          <input id="pickup" name="pickup" type="text" required />
         </div>
         <div class="field">
-          <label for="dropoff">መድረሻ ቦታ (Drop-off)</label>
-          <input id="dropoff" name="dropoff" type="text" required placeholder="ለምሳሌ፡ ቦሌ" />
+          <label for="dropoff">መድረሻ ቦታ</label>
+          <input id="dropoff" name="dropoff" type="text" required />
         </div>
-        <button class="btn" type="submit">ጉዞ ይጠይቁ</button>
+        <button type="submit">ጉዞ ይጠይቁ</button>
       </form>
-      <div id="msg"></div>
-    </section>
+      <div id="msg" class="msg"></div>
+    </div>
 
-    <section id="driver-register" class="card">
-      <h2>የአሽከርካሪ ምዝገባ (Driver Registration)</h2>
+    <div id="driver" class="box">
+      <h2>የአሽከርካሪ ምዝገባ</h2>
       <form id="driverForm">
         <div class="field">
-          <label for="driverName">የአሽከርካሪ ሙሉ ስም</label>
-          <input id="driverName" name="driverName" type="text" required placeholder="ለምሳሌ፡ ታደሰ በቀለ" />
+          <label for="driverName">የአሽከርካሪ ስም</label>
+          <input id="driverName" name="driverName" type="text" required />
         </div>
         <div class="field">
           <label for="driverPhone">ስልክ ቁጥር</label>
-          <input id="driverPhone" name="driverPhone" type="tel" required placeholder="09..." />
+          <input id="driverPhone" name="driverPhone" type="tel" required />
         </div>
         <div class="field">
-          <label for="vehicleType">የተሽከርካሪ ዓይነት (Vehicle Type)</label>
+          <label for="vehicleType">ተሽከርካሪ</label>
           <select id="vehicleType" name="vehicleType" required>
             <option value="Sedan / ሲዳን">Sedan / ሲዳን</option>
             <option value="Minivan / ሚኒቫን">Minivan / ሚኒቫን</option>
@@ -540,49 +394,65 @@ const htmlPage = `<!DOCTYPE html>
           </select>
         </div>
         <div class="field">
-          <label for="plateNumber">የሰሌዳ ቁጥር (Plate Number)</label>
-          <input id="plateNumber" name="plateNumber" type="text" required placeholder="ለምሳሌ፡ 3-A12345 AA" />
+          <label for="plateNumber">ሰሌዳ ቁጥር</label>
+          <input id="plateNumber" name="plateNumber" type="text" required />
         </div>
-        <button class="btn btn-secondary" type="submit">እንደ አሽከርካሪ ይመዝገቡ</button>
+        <button type="submit" class="btn-blue">እንደ አሽከርካሪ ይመዝገቡ</button>
       </form>
-      <div id="driverMsg"></div>
-    </section>
+      <div id="driverMsg" class="msg"></div>
+    </div>
 
-    <section id="admin" class="card">
-      <h2>የአስተዳደር ክፍል — የይለፍ ቃል ያስገቡ</h2>
-      <div class="login-row">
-        <input id="adminPassInput" type="password" placeholder="የአስተዳደር የይለፍ ቃል (Password)" />
-        <button id="unlockAdminBtn" class="btn btn-sm btn-secondary" type="button">ግባ</button>
-        <button id="lockAdminBtn" class="btn btn-sm btn-danger" type="button" style="display:none;">ውጣ (Lock)</button>
+    <div id="admin" class="box">
+      <h2>የአስተዳደር ክፍል</h2>
+      <div class="field">
+        <label for="adminPassInput">የይለፍ ቃል</label>
+        <input id="adminPassInput" type="password" />
       </div>
-      <div id="adminMsg"></div>
+      <button id="unlockAdminBtn" type="button" class="btn-blue">ግባ</button>
+      <button id="lockAdminBtn" type="button" class="btn-red" style="display:none;">ውጣ</button>
+      <div id="adminMsg" class="msg"></div>
+
       <h3>የጉዞ ጥያቄዎች</h3>
       <div id="ridesList"></div>
+
       <h3>የተመዘገቡ አሽከርካሪዎች</h3>
       <div id="driversList"></div>
-    </section>
+    </div>
 
-    <div class="footer">
+    <div id="photos" class="box gallery-box">
+      <h2>የጉዞ ፕላስ ፎቶዎች</h2>
+      <p>ዳታ ለመቆጠብ ፎቶዎች ሲፈለጉ ብቻ ይጫናሉ፦</p>
+      <button id="loadPhotosBtn" type="button" class="btn-blue">ፎቶዎችን አሳይ</button>
+      <div id="photosArea"></div>
+    </div>
+
+    <div class="foot">
       © 2026 Guzo Plus (ጉዞ ፕላስ) — https://guzo-plus-05wo.onrender.com/
     </div>
-  </main>
+  </div>
 
   <script>
-    const form = document.getElementById('rideForm');
-    const msg = document.getElementById('msg');
-    const driverForm = document.getElementById('driverForm');
-    const driverMsg = document.getElementById('driverMsg');
-    const ridesList = document.getElementById('ridesList');
-    const driversList = document.getElementById('driversList');
-    const adminMsg = document.getElementById('adminMsg');
-    const passInput = document.getElementById('adminPassInput');
-    const unlockBtn = document.getElementById('unlockAdminBtn');
-    const lockBtn = document.getElementById('lockAdminBtn');
+    var form = document.getElementById('rideForm');
+    var msg = document.getElementById('msg');
+    var driverForm = document.getElementById('driverForm');
+    var driverMsg = document.getElementById('driverMsg');
+    var ridesList = document.getElementById('ridesList');
+    var driversList = document.getElementById('driversList');
+    var adminMsg = document.getElementById('adminMsg');
+    var passInput = document.getElementById('adminPassInput');
+    var unlockBtn = document.getElementById('unlockAdminBtn');
+    var lockBtn = document.getElementById('lockAdminBtn');
+    var loadPhotosBtn = document.getElementById('loadPhotosBtn');
+    var photosArea = document.getElementById('photosArea');
 
-    let adminPassword = sessionStorage.getItem('guzo_admin_pass') || '';
+    var adminPassword = '';
+    try {
+      adminPassword = sessionStorage.getItem('guzo_admin_pass') || '';
+    } catch (e) {}
+
     if (adminPassword) {
       passInput.value = adminPassword;
-      lockBtn.style.display = 'inline-block';
+      lockBtn.style.display = 'block';
     }
 
     function escapeHtml(str) {
@@ -599,228 +469,196 @@ const htmlPage = `<!DOCTYPE html>
       return 'በመጠባበቅ ላይ';
     }
 
-    function statusClass(status) {
-      if (status === 'accepted' || status === 'approved') return 'status-pill status-accepted';
-      if (status === 'completed') return 'status-pill status-completed';
-      return 'status-pill';
+    function adminHeaders(extra) {
+      var h = { 'x-admin-password': adminPassword };
+      if (extra) {
+        for (var k in extra) h[k] = extra[k];
+      }
+      return h;
     }
 
-    function adminHeaders(extra = {}) {
-      return {
-        ...extra,
-        'x-admin-password': adminPassword,
-      };
-    }
-
-    async function loadAdminData() {
+    function loadAdminData() {
       if (!adminPassword) {
-        adminMsg.style.color = '#4b5563';
-        adminMsg.textContent = 'ዝርዝሩን ለማየት የአስተዳደር የይለፍ ቃል ያስገቡ።';
+        adminMsg.style.color = '#333333';
+        adminMsg.textContent = 'ዝርዝሩን ለማየት የይለፍ ቃል ያስገቡ።';
         ridesList.innerHTML = '';
         driversList.innerHTML = '';
         return;
       }
 
-      adminMsg.style.color = '#374151';
-      adminMsg.textContent = 'መረጃዎች እየተጫኑ ነው...';
-      try {
-        const [ridesRes, driversRes] = await Promise.all([
-          fetch('/api/rides', { headers: adminHeaders() }),
-          fetch('/api/drivers', { headers: adminHeaders() }),
-        ]);
-        const ridesData = await ridesRes.json();
-        const driversData = await driversRes.json();
+      adminMsg.style.color = '#111111';
+      adminMsg.textContent = 'እየተጫነ ነው...';
 
+      Promise.all([
+        fetch('/api/rides', { headers: adminHeaders() }).then(function(r) { return r.json().then(function(d) { return { ok: r.ok, data: d }; }); }),
+        fetch('/api/drivers', { headers: adminHeaders() }).then(function(r) { return r.json().then(function(d) { return { ok: r.ok, data: d }; }); })
+      ]).then(function(results) {
+        var ridesRes = results[0];
+        var driversRes = results[1];
         if (!ridesRes.ok || !driversRes.ok) {
           adminMsg.style.color = '#b91c1c';
-          adminMsg.textContent = ridesData.error || driversData.error || 'የይለፍ ቃል ስህተት ነው።';
+          adminMsg.textContent = ridesRes.data.error || driversRes.data.error || 'የይለፍ ቃል ስህተት ነው።';
           ridesList.innerHTML = '';
           driversList.innerHTML = '';
           return;
         }
-
         adminMsg.textContent = '';
-        lockBtn.style.display = 'inline-block';
+        lockBtn.style.display = 'block';
 
-        const rides = ridesData.rides || [];
+        var rides = ridesRes.data.rides || [];
         if (!rides.length) {
-          ridesList.innerHTML = '<p style="text-align:center;color:#6b7280;">እስካሁን የተመዘገበ የጉዞ ጥያቄ የለም።</p>';
+          ridesList.innerHTML = '<p>ምንም የጉዞ ጥያቄ የለም።</p>';
         } else {
-          ridesList.innerHTML = rides.map((r) => \`
-            <div class="ride-item">
-              <div class="ride-top">
-                <strong>\${escapeHtml(r.name)} (\${escapeHtml(r.phone)})</strong>
-                <span class="\${statusClass(r.status)}">\${statusLabel(r.status)}</span>
-              </div>
-              <div class="ride-meta">
-                መነሻ፡ <strong>\${escapeHtml(r.pickup)}</strong> → መድረሻ፡ <strong>\${escapeHtml(r.dropoff)}</strong>
-              </div>
-              <div>
-                <button class="btn btn-sm btn-secondary" type="button" onclick="updateStatus('\${r._id}', 'accepted')">ተቀበል</button>
-                <button class="btn btn-sm" type="button" onclick="updateStatus('\${r._id}', 'completed')">አጠናቅቅ</button>
-                <button class="btn btn-sm btn-danger" type="button" onclick="deleteRide('\${r._id}')">አጥፋ</button>
-              </div>
-            </div>
-          \`).join('');
+          ridesList.innerHTML = rides.map(function(r) {
+            return '<div class="item">' +
+              '<div><b>' + escapeHtml(r.name) + '</b> (' + escapeHtml(r.phone) + ') - ' + escapeHtml(statusLabel(r.status)) + '</div>' +
+              '<div>' + escapeHtml(r.pickup) + ' -> ' + escapeHtml(r.dropoff) + '</div>' +
+              '<button type="button" class="btn-blue" onclick="updateStatus(\'' + r._id + '\', \'accepted\')">ተቀበል</button>' +
+              '<button type="button" onclick="updateStatus(\'' + r._id + '\', \'completed\')">አጠናቅቅ</button>' +
+              '<button type="button" class="btn-red" onclick="deleteRide(\'' + r._id + '\')">አጥፋ</button>' +
+              '</div>';
+          }).join('');
         }
 
-        const drivers = driversData.drivers || [];
+        var drivers = driversRes.data.drivers || [];
         if (!drivers.length) {
-          driversList.innerHTML = '<p style="text-align:center;color:#6b7280;">እስካሁን የተመዘገበ አሽከርካሪ የለም።</p>';
+          driversList.innerHTML = '<p>ምንም የተመዘገበ አሽከርካሪ የለም።</p>';
         } else {
-          driversList.innerHTML = drivers.map((d) => \`
-            <div class="ride-item">
-              <div class="ride-top">
-                <strong>\${escapeHtml(d.name)} (\${escapeHtml(d.phone)})</strong>
-                <span class="\${statusClass(d.status)}">\${statusLabel(d.status)}</span>
-              </div>
-              <div class="ride-meta">
-                ተሽከርካሪ፡ <strong>\${escapeHtml(d.vehicleType)}</strong> | ሰሌዳ፡ <strong>\${escapeHtml(d.plateNumber)}</strong>
-              </div>
-              <div>
-                <button class="btn btn-sm btn-secondary" type="button" onclick="updateDriverStatus('\${d._id}', 'approved')">አጽድቅ</button>
-                <button class="btn btn-sm btn-danger" type="button" onclick="deleteDriver('\${d._id}')">አጥፋ</button>
-              </div>
-            </div>
-          \`).join('');
+          driversList.innerHTML = drivers.map(function(d) {
+            return '<div class="item">' +
+              '<div><b>' + escapeHtml(d.name) + '</b> (' + escapeHtml(d.phone) + ') - ' + escapeHtml(statusLabel(d.status)) + '</div>' +
+              '<div>' + escapeHtml(d.vehicleType) + ' | ' + escapeHtml(d.plateNumber) + '</div>' +
+              '<button type="button" class="btn-blue" onclick="updateDriverStatus(\'' + d._id + '\', \'approved\')">አጽድቅ</button>' +
+              '<button type="button" class="btn-red" onclick="deleteDriver(\'' + d._id + '\')">አጥፋ</button>' +
+              '</div>';
+          }).join('');
         }
-      } catch {
+      }).catch(function() {
         adminMsg.style.color = '#b91c1c';
-        adminMsg.textContent = 'ዝርዝሩን ሲጫን የኔትወርክ ስህተት አጋጥሟል።';
-      }
+        adminMsg.textContent = 'የኔትወርክ ስህተት አጋጥሟል።';
+      });
     }
 
-    unlockBtn.addEventListener('click', () => {
+    unlockBtn.onclick = function() {
       adminPassword = passInput.value.trim();
       if (!adminPassword) {
         adminMsg.style.color = '#b91c1c';
         adminMsg.textContent = 'እባክዎ የይለፍ ቃል ያስገቡ።';
         return;
       }
-      sessionStorage.setItem('guzo_admin_pass', adminPassword);
+      try { sessionStorage.setItem('guzo_admin_pass', adminPassword); } catch (e) {}
       loadAdminData();
-    });
+    };
 
-    lockBtn.addEventListener('click', () => {
+    lockBtn.onclick = function() {
       adminPassword = '';
       passInput.value = '';
-      sessionStorage.removeItem('guzo_admin_pass');
+      try { sessionStorage.removeItem('guzo_admin_pass'); } catch (e) {}
       lockBtn.style.display = 'none';
       ridesList.innerHTML = '';
       driversList.innerHTML = '';
-      adminMsg.style.color = '#4b5563';
-      adminMsg.textContent = 'ተቆልፏል። እንደገና ለማየት የይለፍ ቃል ያስገቡ።';
-    });
-
-    window.updateStatus = async function(id, status) {
-      try {
-        const res = await fetch('/api/rides/' + encodeURIComponent(id), {
-          method: 'PATCH',
-          headers: adminHeaders({ 'Content-Type': 'application/json' }),
-          body: JSON.stringify({ status }),
-        });
-        if (res.ok) loadAdminData();
-      } catch {}
+      adminMsg.style.color = '#333333';
+      adminMsg.textContent = 'ተቆልፏል።';
     };
 
-    window.deleteRide = async function(id) {
-      try {
-        const res = await fetch('/api/rides/' + encodeURIComponent(id), {
-          method: 'DELETE',
-          headers: adminHeaders(),
-        });
-        if (res.ok) loadAdminData();
-      } catch {}
+    window.updateStatus = function(id, status) {
+      fetch('/api/rides/' + encodeURIComponent(id), {
+        method: 'PATCH',
+        headers: adminHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ status: status })
+      }).then(function(r) { if (r.ok) loadAdminData(); });
     };
 
-    window.updateDriverStatus = async function(id, status) {
-      try {
-        const res = await fetch('/api/drivers/' + encodeURIComponent(id), {
-          method: 'PATCH',
-          headers: adminHeaders({ 'Content-Type': 'application/json' }),
-          body: JSON.stringify({ status }),
-        });
-        if (res.ok) loadAdminData();
-      } catch {}
+    window.deleteRide = function(id) {
+      fetch('/api/rides/' + encodeURIComponent(id), {
+        method: 'DELETE',
+        headers: adminHeaders()
+      }).then(function(r) { if (r.ok) loadAdminData(); });
     };
 
-    window.deleteDriver = async function(id) {
-      try {
-        const res = await fetch('/api/drivers/' + encodeURIComponent(id), {
-          method: 'DELETE',
-          headers: adminHeaders(),
-        });
-        if (res.ok) loadAdminData();
-      } catch {}
+    window.updateDriverStatus = function(id, status) {
+      fetch('/api/drivers/' + encodeURIComponent(id), {
+        method: 'PATCH',
+        headers: adminHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ status: status })
+      }).then(function(r) { if (r.ok) loadAdminData(); });
     };
 
-    form.addEventListener('submit', async (e) => {
+    window.deleteDriver = function(id) {
+      fetch('/api/drivers/' + encodeURIComponent(id), {
+        method: 'DELETE',
+        headers: adminHeaders()
+      }).then(function(r) { if (r.ok) loadAdminData(); });
+    };
+
+    form.onsubmit = function(e) {
       e.preventDefault();
-      msg.style.color = '#1f2937';
+      msg.style.color = '#111111';
       msg.textContent = 'እየተላከ ነው...';
-
-      const payload = {
-        name: document.getElementById('name').value.trim(),
-        phone: document.getElementById('phone').value.trim(),
-        pickup: document.getElementById('pickup').value.trim(),
-        dropoff: document.getElementById('dropoff').value.trim(),
-      };
-
-      try {
-        const res = await fetch('/api/rides', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        });
-        const data = await res.json();
+      fetch('/api/rides', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: document.getElementById('name').value.trim(),
+          phone: document.getElementById('phone').value.trim(),
+          pickup: document.getElementById('pickup').value.trim(),
+          dropoff: document.getElementById('dropoff').value.trim()
+        })
+      }).then(function(r) {
+        return r.json().then(function(d) { return { ok: r.ok, data: d }; });
+      }).then(function(res) {
         if (!res.ok) {
           msg.style.color = '#b91c1c';
-          msg.textContent = data.error || 'መላክ አልተቻለም።';
+          msg.textContent = res.data.error || 'መላክ አልተቻለም።';
           return;
         }
         msg.style.color = '#15803d';
-        msg.textContent = 'የጉዞ ጥያቄዎ በተሳካ ሁኔታ ተመዝግቧል!';
+        msg.textContent = 'የጉዞ ጥያቄዎ ተመዝግቧል!';
         form.reset();
         if (adminPassword) loadAdminData();
-      } catch {
+      }).catch(function() {
         msg.style.color = '#b91c1c';
         msg.textContent = 'የኔትወርክ ስህተት አጋጥሟል።';
-      }
-    });
+      });
+    };
 
-    driverForm.addEventListener('submit', async (e) => {
+    driverForm.onsubmit = function(e) {
       e.preventDefault();
-      driverMsg.style.color = '#1f2937';
+      driverMsg.style.color = '#111111';
       driverMsg.textContent = 'እየተመዘገበ ነው...';
-
-      const payload = {
-        name: document.getElementById('driverName').value.trim(),
-        phone: document.getElementById('driverPhone').value.trim(),
-        vehicleType: document.getElementById('vehicleType').value.trim(),
-        plateNumber: document.getElementById('plateNumber').value.trim(),
-      };
-
-      try {
-        const res = await fetch('/api/drivers', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        });
-        const data = await res.json();
+      fetch('/api/drivers', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: document.getElementById('driverName').value.trim(),
+          phone: document.getElementById('driverPhone').value.trim(),
+          vehicleType: document.getElementById('vehicleType').value.trim(),
+          plateNumber: document.getElementById('plateNumber').value.trim()
+        })
+      }).then(function(r) {
+        return r.json().then(function(d) { return { ok: r.ok, data: d }; });
+      }).then(function(res) {
         if (!res.ok) {
           driverMsg.style.color = '#b91c1c';
-          driverMsg.textContent = data.error || 'መመዝገብ አልተቻለም።';
+          driverMsg.textContent = res.data.error || 'መመዝገብ አልተቻለም።';
           return;
         }
         driverMsg.style.color = '#15803d';
-        driverMsg.textContent = 'የአሽከርካሪ ምዝገባዎ በተሳካ ሁኔታ ተልኳል! በቅርቡ ይገመገማል።';
+        driverMsg.textContent = 'የአሽከርካሪ ምዝገባዎ ተልኳል!';
         driverForm.reset();
         if (adminPassword) loadAdminData();
-      } catch {
+      }).catch(function() {
         driverMsg.style.color = '#b91c1c';
         driverMsg.textContent = 'የኔትወርክ ስህተት አጋጥሟል።';
-      }
-    });
+      });
+    };
+
+    loadPhotosBtn.onclick = function() {
+      photosArea.innerHTML =
+        '<p>ጉዞ ፕላስ • Guzo Plus</p><img src="/1795448273390.jpg" alt="ጉዞ ፕላስ" />' +
+        '<p>የጉዞ ፕላስ ከተማ ማስታወቂያ</p><img src="/1795448572602.jpg" alt="ማስታወቂያ" />' +
+        '<p>በመብራት ላይ የቆመ ጉዞ ፕላስ</p><img src="/1795448585057.jpg" alt="መኪና" />';
+    };
 
     loadAdminData();
   </script>
