@@ -1,7 +1,32 @@
 
 const http = require('node:http');
+const { MongoClient } = require('mongodb');
 
 const PORT = process.env.PORT || 3000;
+const MONGO_URI = process.env.MONGODB_URI || process.env.MONGO_URI || '';
+
+let dbStatus = 'Not configured (set MONGODB_URI)';
+
+async function connectAtlas() {
+  if (!MONGO_URI) {
+    console.warn('MONGODB_URI is not set. Running without Atlas DB connection.');
+    return;
+  }
+
+  const client = new MongoClient(MONGO_URI, {
+    serverSelectionTimeoutMS: 8000,
+  });
+
+  try {
+    await client.connect();
+    await client.db('admin').command({ ping: 1 });
+    dbStatus = 'Connected to MongoDB Atlas';
+    console.log('Connected to MongoDB Atlas successfully!');
+  } catch (err) {
+    dbStatus = `Connection failed: ${err.message}`;
+    console.error('MongoDB Atlas connection error:', err.message);
+  }
+}
 
 const htmlPage = `<!DOCTYPE html>
 <html lang="am">
@@ -121,10 +146,17 @@ const htmlPage = `<!DOCTYPE html>
 </html>`;
 
 const server = http.createServer((req, res) => {
+  if (req.url === '/health/db') {
+    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+    res.end(JSON.stringify({ status: dbStatus }));
+    return;
+  }
+
   res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
   res.end(htmlPage);
 });
 
 server.listen(PORT, () => {
   console.log(`Guzo Plus server running on port ${PORT}`);
+  connectAtlas();
 });
