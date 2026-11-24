@@ -767,4 +767,4 @@ const server = http.createServer(async (req, res) => {
       if (cleanUrl === '/admin') {
         const pass = (body.password || '').trim();
         if (!isValidPassword(pass)) {
-          return sendHtml(res, 401,
+          return sendHtml(res, 401,~/server.js
