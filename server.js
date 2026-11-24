@@ -27,6 +27,7 @@ const PORT = process.env.PORT || 5000;
 const MONGO_URI = process.env.MONGO_URI || process.env.MONGODB_URI;
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin1234';
 
 let Ride;
 try {
@@ -176,9 +177,10 @@ app.get('/', (req, res) => {
       '<title>ጉዞ ፕላስ | Guzo Plus</title>' +
       '<style>*{box-sizing:border-box;font-family:system-ui,-apple-system,sans-serif}' +
       'body{margin:0;background:#0f172a;color:#f8fafc}' +
-      'header{background:#1e293b;padding:18px 20px;border-bottom:1px solid #334155}' +
+      'header{background:#1e293b;padding:18px 20px;border-bottom:1px solid #334155;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px}' +
       'header h1{margin:0;font-size:1.35rem;color:#22c55e}' +
       'header p{margin:4px 0 0;font-size:0.9rem;color:#cbd5e1}' +
+      'header a{background:#334155;color:#f8fafc;text-decoration:none;padding:8px 12px;border-radius:8px;font-size:0.85rem;font-weight:600}' +
       'main{max-width:720px;margin:20px auto;padding:0 16px}' +
       '.card{background:#1e293b;border:1px solid #334155;border-radius:12px;padding:18px;margin-bottom:16px}' +
       '.badge{display:inline-block;background:#14532d;color:#86efac;padding:4px 10px;border-radius:999px;font-size:0.8rem;margin-bottom:10px}' +
@@ -188,7 +190,7 @@ app.get('/', (req, res) => {
       '#msg{margin-top:12px;font-size:0.9rem;color:#86efac;min-height:20px}' +
       '.ride-item{border-top:1px solid #334155;padding:10px 0;font-size:0.9rem}' +
       '.ride-item:first-child{border-top:none}</style></head><body>' +
-      '<header><h1>ጉዞ ፕላስ (Guzo Plus)</h1><p>የጉዞ ጥያቄ ማስተላለፊያ እና የአገልግሎት ገጽ</p></header>' +
+      '<header><div><h1>ጉዞ ፕላስ (Guzo Plus)</h1><p>የጉዞ ጥያቄ ማስተላለፊያ እና የአገልግሎት ገጽ</p></div><a href="/admin">🛠️ አስተዳደር</a></header>' +
       '<main><div class="card"><span class="badge">● አገልግሎቱ ቀጥታ ነው</span>' +
       '<h2>አዲስ የጉዞ ጥያቄ ይላኩ</h2><form id="rideForm">' +
       '<label for="passengerName">ስም</label><input id="passengerName" name="passengerName" placeholder="ሙሉ ስም" required />' +
@@ -233,6 +235,98 @@ app.post('/api/rides', async (req, res) => {
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
+});
+
+app.patch('/api/rides/:id', async (req, res) => {
+  const pass = req.headers['x-admin-password'];
+  if (pass !== ADMIN_PASSWORD) {
+    return res.status(401).json({ error: 'የተሳሳተ የአስተዳዳሪ ይለፍ ቃል' });
+  }
+  try {
+    const updated = await Ride.findByIdAndUpdate(
+      req.params.id,
+      { status: req.body.status },
+      { new: true }
+    );
+    if (!updated) return res.status(404).json({ error: 'ጉዞው አልተገኘም' });
+    res.json(updated);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.delete('/api/rides/:id', async (req, res) => {
+  const pass = req.headers['x-admin-password'];
+  if (pass !== ADMIN_PASSWORD) {
+    return res.status(401).json({ error: 'የተሳሳተ የአስተዳዳሪ ይለፍ ቃል' });
+  }
+  try {
+    await Ride.findByIdAndDelete(req.params.id);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.get('/admin', (req, res) => {
+  res.type('html').send(
+    '<!DOCTYPE html><html lang="am"><head><meta charset="UTF-8" />' +
+      '<meta name="viewport" content="width=device-width, initial-scale=1.0" />' +
+      '<title>ጉዞ ፕላስ | አስተዳደር ክፍል</title>' +
+      '<style>*{box-sizing:border-box;font-family:system-ui,-apple-system,sans-serif}' +
+      'body{margin:0;background:#0f172a;color:#f8fafc}' +
+      'header{background:#1e293b;padding:16px 20px;border-bottom:1px solid #334155;display:flex;justify-content:space-between;align-items:center}' +
+      'header h1{margin:0;font-size:1.25rem;color:#38bdf8}' +
+      'header a{color:#94a3b8;text-decoration:none;font-size:0.9rem}' +
+      'main{max-width:860px;margin:20px auto;padding:0 16px}' +
+      '.card{background:#1e293b;border:1px solid #334155;border-radius:12px;padding:16px;margin-bottom:16px}' +
+      '.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px}' +
+      '.stat{background:#0f172a;border:1px solid #334155;border-radius:10px;padding:12px;text-align:center}' +
+      '.stat b{display:block;font-size:1.4rem;color:#22c55e}' +
+      'input{width:100%;padding:10px 12px;border-radius:8px;border:1px solid #475569;background:#0f172a;color:#fff;margin-top:6px}' +
+      'button{padding:8px 12px;border:none;border-radius:8px;font-weight:600;cursor:pointer;margin-top:8px;margin-right:6px}' +
+      '.btn-primary{background:#38bdf8;color:#082f49;width:100%;padding:11px}' +
+      '.btn-accept{background:#22c55e;color:#052e16}' +
+      '.btn-complete{background:#3b82f6;color:#fff}' +
+      '.btn-del{background:#ef4444;color:#fff}' +
+      '.ride{border-top:1px solid #334155;padding:12px 0}' +
+      '.ride:first-child{border-top:none}' +
+      '.badge{padding:2px 8px;border-radius:999px;font-size:0.78rem;background:#334155}' +
+      '</style></head><body>' +
+      '<header><h1>🛠️ ጉዞ ፕላስ - አስተዳደር</h1><a href="/">← ወደ ዋናው ገጽ</a></header>' +
+      '<main>' +
+      '<div id="loginBox" class="card"><h3>የአስተዳዳሪ መግቢያ</h3>' +
+      '<input id="adminPass" type="password" placeholder="የአስተዳዳሪ ይለፍ ቃል ያስገቡ" />' +
+      '<button class="btn-primary" onclick="loginAdmin()">ግባ</button><div id="loginMsg" style="color:#f87171;margin-top:8px"></div></div>' +
+      '<div id="panel" style="display:none">' +
+      '<div class="stats">' +
+      '<div class="stat"><b id="sTotal">0</b><span>ጠቅላላ</span></div>' +
+      '<div class="stat"><b id="sPending" style="color:#facc15">0</b><span>በመጠባበቅ ላይ</span></div>' +
+      '<div class="stat"><b id="sDone" style="color:#38bdf8">0</b><span>የተጠናቀቁ</span></div>' +
+      '</div>' +
+      '<div class="card"><div style="display:flex;justify-content:space-between;align-items:center">' +
+      '<h3 style="margin:0">ሁሉም የጉዞ ጥያቄዎች</h3>' +
+      '<button class="btn-complete" style="margin:0" onclick="loadAdminRides()">አድስ (Refresh)</button></div>' +
+      '<div id="adminList" style="margin-top:10px">በመጫን ላይ...</div></div></div>' +
+      '</main>' +
+      '<script>' +
+      'let savedPass=sessionStorage.getItem("guzo_admin_pass")||"";' +
+      'if(savedPass){document.getElementById("loginBox").style.display="none";document.getElementById("panel").style.display="block";loadAdminRides();}' +
+      'function loginAdmin(){const p=document.getElementById("adminPass").value.trim();if(!p)return;savedPass=p;sessionStorage.setItem("guzo_admin_pass",p);document.getElementById("loginBox").style.display="none";document.getElementById("panel").style.display="block";loadAdminRides();}' +
+      'async function loadAdminRides(){const list=document.getElementById("adminList");try{const res=await fetch("/api/rides");const rides=await res.json();' +
+      'document.getElementById("sTotal").textContent=rides.length;' +
+      'document.getElementById("sPending").textContent=rides.filter(r=>(r.status||"pending")==="pending").length;' +
+      'document.getElementById("sDone").textContent=rides.filter(r=>r.status==="completed").length;' +
+      'if(!rides.length){list.textContent="ምንም የጉዞ ጥያቄ የለም።";return;}' +
+      'list.innerHTML=rides.map(r=>"<div class=\\"ride\\"><div><strong>"+(r.passengerName||"ተጓዥ")+"</strong> ("+(r.phone||"ስልክ የለም")+") <span class=\\"badge\\">"+(r.status||"pending")+"</span></div>"+' +
+      '"<div style=\\"color:#cbd5e1;margin:4px 0\\">📍 "+(r.pickup||"-")+" → 🎯 "+(r.dropoff||"-")+" | "+(r.rideType||"solo")+"</div>"+' +
+      '"<div><button class=\\"btn-accept\\" onclick=\\"setStatus(\'"+r._id+"\',\'accepted\')\\">አጽድቅ (Accept)</button>"+' +
+      '"<button class=\\"btn-complete\\" onclick=\\"setStatus(\'"+r._id+"\',\'completed\')\\">አጠናቅቅ (Complete)</button>"+' +
+      '"<button class=\\"btn-del\\" onclick=\\"delRide(\'"+r._id+"\')\\">አጥፋ</button></div></div>").join("");}catch(e){list.textContent="ስህተት ተፈጥሯል።";}}' +
+      'async function setStatus(id,status){const res=await fetch("/api/rides/"+id,{method:"PATCH",headers:{"Content-Type":"application/json","x-admin-password":savedPass},body:JSON.stringify({status})});if(res.status===401){alert("የተሳሳተ የይለፍ ቃል!");sessionStorage.removeItem("guzo_admin_pass");location.reload();return;}loadAdminRides();}' +
+      'async function delRide(id){if(!confirm("ይህንን ጥያቄ ማጥፋት ይፈልጋሉ?"))return;const res=await fetch("/api/rides/"+id,{method:"DELETE",headers:{"x-admin-password":savedPass}});if(res.status===401){alert("የተሳሳተ የይለፍ ቃል!");sessionStorage.removeItem("guzo_admin_pass");location.reload();return;}loadAdminRides();}' +
+      '</script></body></html>'
+  );
 });
 
 process.on('uncaughtException', (err) => {
