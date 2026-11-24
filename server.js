@@ -1,5 +1,10 @@
 
-require('dotenv').config();
+try {
+  require('dotenv').config();
+} catch (_) {
+  // Render injects environment variables directly into process.env
+}
+
 const express = require('express');
 const cors = require('cors');
 const mongoose = require('mongoose');
