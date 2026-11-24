@@ -1,14 +1,15 @@
-{
-  "name": "guzo-plus",
-  "version": "1.0.0","license": "MIT",
 
-  "main": "server.js",
-  "scripts": {
-    "start": "node server.js"
-  },
-  "dependencies": {
-    "express": "^4.19.2",
-    "mongoose": "^8.7.0",
-    "telegraf": "^4.16.3"
-  }
+let corsMiddleware = null;
+try {
+  const cors = require('cors');
+  corsMiddleware = cors();
+} catch (_) {
+  corsMiddleware = (req, res, next) => {
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Content-Type,Authorization');
+    if (req.method === 'OPTIONS') return res.sendStatus(204);
+    next();
+  };
 }
+app.use(corsMiddleware);
