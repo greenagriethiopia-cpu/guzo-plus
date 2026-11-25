@@ -302,6 +302,43 @@ app.get('/api/rides', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+const driverSchema = new mongoose.Schema(
+  {
+    fullName: { type: String, required: true },
+    phone: { type: String, required: true },
+    vehicleType: { type: String, default: 'ባጃጅ (Bajaj)' },
+    plateNumber: { type: String, default: '' },
+    area: { type: String, default: '' },
+    status: { type: String, default: 'pending' }
+  },
+  { timestamps: true }
+);
+
+const Driver = mongoose.models.Driver || mongoose.model('Driver', driverSchema);
+
+app.get('/api/drivers', async (req, res) => {
+  try {
+    const drivers = await Driver.find().sort({ createdAt: -1 }).limit(25);
+    res.json(drivers);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/drivers', async (req, res) => {
+  try {
+    const driver = await Driver.create(req.body);
+    if (TELEGRAM_CHAT_ID) {
+      await sendTelegramMessage(
+        TELEGRAM_CHAT_ID,
+        `🚘 አዲስ የሾፌር ምዝገባ (Guzo Plus)\nስም፡ ${driver.fullName}\nስልክ፡ ${driver.phone}\nተሽከርካሪ፡ ${driver.vehicleType}\nሰሌዳ፡ ${driver.plateNumber || '-'}\nአካባቢ፡ ${driver.area || '-'}`
+      );
+    }
+    res.status(201).json(driver);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
 
 app.post('/api/rides', async (req, res) => {
   try {
