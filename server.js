@@ -1,570 +1,1022 @@
-try {
-  require('dotenv').config();
-} catch (_) {}
+const http = require('node:http');
+const crypto = require('node:crypto');
+const fs = require('node:fs');
+const path = require('node:path');
+const { MongoClient, ObjectId } = require('mongodb');
 
-const path = require('path');
-const fs = require('fs');
-const express = require('express');
-const mongoose = require('mongoose');
+const PORT = process.env.PORT || 3000;
+const MONGO_URI = process.env.MONGODB_URI || process.env.MONGO_URI || '';
+const DB_NAME = process.env.MONGODB_DB || 'guzo_plus';
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'guzo2026';
+const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
+const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID || '';
 
-const app = express();
-app.use(express.json());
-
-try {
-  const cors = require('cors');
-  app.use(cors());
-} catch (_) {
-  app.use((req, res, next) => {
-    res.header('Access-Control-Allow-Origin', '*');
-    res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
-    res.header('Access-Control-Allow-Headers', 'Content-Type,Authorization');
-    if (req.method === 'OPTIONS') return res.sendStatus(204);
-    next();
-  });
-}
-
-const PORT = process.env.PORT || 5000;
-const MONGO_URI = process.env.MONGO_URI || process.env.MONGODB_URI;
-const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin1234';
-
-let Ride;
-try {
-  Ride = require('./models/Ride');
-  if (!Ride || typeof Ride.create !== 'function') {
-    throw new Error('Invalid Ride export');
-  }
-} catch (_) {
-  const rideSchema = new mongoose.Schema(
-    {
-      passengerName: { type: String, default: '' },
-      name: { type: String, default: '' },
-      phone: { type: String, default: '' },
-      pickup: { type: String, default: '' },
-      dropoff: { type: String, default: '' },
-      rideType: { type: String, default: 'solo' },
-      timeTariff: { type: String, default: 'now' },
-      fare: { type: Number, default: 200 },
-      status: { type: String, default: 'pending' }
-    },
-    { timestamps: true }
-  );
-  Ride = mongoose.models.Ride || mongoose.model('Ride', rideSchema);
-}
-
-const driverSchema = new mongoose.Schema(
-  {
-    fullName: { type: String, required: true },
-    phone: { type: String, required: true },
-    vehicleType: { type: String, default: 'ባጃጅ (Bajaj)' },
-    plateNumber: { type: String, default: '' },
-    area: { type: String, default: '' },
-    status: { type: String, default: 'pending' }
-  },
-  { timestamps: true }
-);
-
-const Driver = mongoose.models.Driver || mongoose.model('Driver', driverSchema);
-
-function calculateFare(rideType, timeTariff) {
-  let base = 200;
-  if (timeTariff === 'morning' || timeTariff === 'evening') {
-    base += 50;
-  }
-  if (rideType === 'shared') {
-    base = Math.round(base * 0.75);
-  }
-  return base;
-}
-
-async function httpFetch(url, options) {
-  if (typeof fetch === 'function') {
-    return fetch(url, options);
-  }
-  const mod = await import('node-fetch');
-  return mod.default(url, options);
-}
-
-async function sendTelegramMessage(chatId, text, replyMarkup = null) {
-  if (!TELEGRAM_BOT_TOKEN || !chatId) return;
-  try {
-    const body = { chat_id: chatId, text: String(text) };
-    if (replyMarkup) body.reply_markup = replyMarkup;
-    await httpFetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body)
-    });
-  } catch (err) {
-    console.error('Telegram send error:', err.message);
-  }
-}
-
-async function answerCallbackQuery(callbackQueryId, text) {
-  if (!TELEGRAM_BOT_TOKEN || !callbackQueryId) return;
-  try {
-    await httpFetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/answerCallbackQuery`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ callback_query_id: callbackQueryId, text: String(text) })
-    });
-  } catch (err) {
-    console.error('Callback answer error:', err.message);
-  }
-}
-
-const lastShownRidesByChat = new Map();
+let db = null;
+let dbStatus = 'Not configured (set MONGODB_URI)';
 let telegramOffset = 0;
-
-async function pollTelegramUpdates() {
-  if (!TELEGRAM_BOT_TOKEN) return;
-  try {
-    const res = await httpFetch(
-      `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getUpdates?timeout=25&offset=${telegramOffset}`
-    );
-    const data = await res.json();
-    if (data && data.ok && Array.isArray(data.result)) {
-      for (const update of data.result) {
-        telegramOffset = update.update_id + 1;
-
-        if (update.callback_query) {
-          const cq = update.callback_query;
-          const chatId = cq.message && cq.message.chat ? cq.message.chat.id : null;
-          const parts = String(cq.data || '').split(':');
-          const action = parts[0];
-          const rideId = parts[1];
-
-          if ((action === 'accepted' || action === 'completed') && rideId) {
-            const updated = await Ride.findByIdAndUpdate(
-              rideId,
-              { status: action },
-              { new: true }
-            );
-            await answerCallbackQuery(cq.id, `ወደ ${action} ተቀይሯል`);
-            if (chatId && updated) {
-              const pName = updated.passengerName || updated.name || 'ተጓዥ';
-              await sendTelegramMessage(
-                chatId,
-                `✅ ${pName} (${updated.pickup || '-'} → ${updated.dropoff || '-'}) ሁኔታ ወደ "${action}" ተቀይሯል።`
-              );
-            }
-          }
-          continue;
-        }
-
-        if (update.message && typeof update.message.text === 'string') {
-          const chatId = update.message.chat.id;
-          const text = update.message.text.trim();
-
-          if (text === '/start') {
-            await sendTelegramMessage(
-              chatId,
-              'ሰላም! ወደ ጉዞ ፕላስ (Guzo Plus) እንኳን በደህና መጡ።\n\nየቅርብ ጊዜ ጥያቄዎችን ለማየት /rides ይላኩ ወይም ቁጥር (1, 2, 3...) ይላኩ።'
-            );
-          } else if (text === '/rides' || text === 'ዝርዝር') {
-            const rides = await Ride.find().sort({ createdAt: -1 }).limit(10);
-            if (!rides.length) {
-              await sendTelegramMessage(chatId, 'ምንም የተመዘገበ የጉዞ ጥያቄ የለም።');
-            } else {
-              lastShownRidesByChat.set(String(chatId), rides);
-              const lines = rides.map((r, idx) => {
-                const pName = r.passengerName || r.name || 'ተጓዥ';
-                return `${idx + 1}. ${pName} — ${r.status || 'pending'}\n📍 ${r.pickup || '-'} → 🎯 ${r.dropoff || '-'}`;
-              });
-              await sendTelegramMessage(chatId, '📋 የቅርብ ጊዜ የጉዞ ጥያቄዎች:\n\n' + lines.join('\n\n'));
-            }
-          } else if (/^\d+$/.test(text)) {
-            const num = parseInt(text, 10);
-            let rides = lastShownRidesByChat.get(String(chatId));
-            if (!rides || !rides.length) {
-              rides = await Ride.find().sort({ createdAt: -1 }).limit(10);
-              lastShownRidesByChat.set(String(chatId), rides);
-            }
-            const selected = rides[num - 1];
-            if (!selected) {
-              await sendTelegramMessage(chatId, `ቁጥር ${num} በዝርዝሩ ውስጥ አልተገኘም።`);
-            } else {
-              const pName = selected.passengerName || selected.name || '-';
-              const keyboard = {
-                inline_keyboard: [
-                  [
-                    { text: '✅ አጽድቅ (Accept)', callback_data: `accepted:${selected._id}` },
-                    { text: '🏁 አጠናቅቅ (Complete)', callback_data: `completed:${selected._id}` }
-                  ]
-                ]
-              };
-              await sendTelegramMessage(
-                chatId,
-                `🚖 የተመረጠ የጉዞ ጥያቄ (#${num}):\n` +
-                  `ስም፡ ${pName}\n` +
-                  `ስልክ፡ ${selected.phone || '-'}\n` +
-                  `መነሻ፡ ${selected.pickup || '-'}\n` +
-                  `መድረሻ፡ ${selected.dropoff || '-'}\n` +
-                  `ዋጋ፡ ${selected.fare || 200} ብር\n` +
-                  `ሁኔታ፡ ${selected.status || 'pending'}`,
-                keyboard
-              );
-            }
-          } else if (/^(accept|complete)\s+\d+$/i.test(text)) {
-            const match = text.match(/^(accept|complete)\s+(\d+)$/i);
-            const action = match[1].toLowerCase();
-            const num = parseInt(match[2], 10);
-            const rides =
-              lastShownRidesByChat.get(String(chatId)) ||
-              (await Ride.find().sort({ createdAt: -1 }).limit(10));
-            const selected = rides[num - 1];
-            if (!selected) {
-              await sendTelegramMessage(chatId, `ቁጥር ${num} አልተገኘም።`);
-            } else {
-              const newStatus = action === 'accept' ? 'accepted' : 'completed';
-              await Ride.findByIdAndUpdate(selected._id, { status: newStatus });
-              await sendTelegramMessage(chatId, `✅ የጉዞ #${num} ሁኔታ ወደ "${newStatus}" ተቀይሯል።`);
-            }
-          } else {
-            await sendTelegramMessage(
-              chatId,
-              'ትዕዛዝ አልታወቀም። /start ወይም /rides ይላኩ ወይም የጉዞ ቁጥር (1, 2...) ይላኩ።'
-            );
-          }
-        }
-      }
-    }
-  } catch (err) {
-    console.error('Telegram polling error:', err.message);
-  } finally {
-    setTimeout(pollTelegramUpdates, 2000);
-  }
-}
-
-app.get('/manifest.json', (req, res) => {
-  const customManifest = path.join(__dirname, 'public', 'manifest.json');
-  if (fs.existsSync(customManifest)) {
-    return res.sendFile(customManifest);
-  }
-  res.json({
-    name: 'ጉዞ ፕላስ | Guzo Plus',
-    short_name: 'ጉዞ ፕላስ',
-    description: 'የጉዞ ጥያቄ ማስተላለፊያ እና የአገልግሎት መተግበሪያ',
-    start_url: '/',
-    display: 'standalone',
-    background_color: '#f1f5f9',
-    theme_color: '#15803d',
-    orientation: 'portrait'
-  });
-});
-
-app.get('/sw.js', (req, res) => {
-  const customSw = path.join(__dirname, 'public', 'sw.js');
-  if (fs.existsSync(customSw)) {
-    return res.sendFile(customSw);
-  }
-  res.type('application/javascript').send(
-    'const CACHE_NAME="guzo-plus-v1";' +
-      'self.addEventListener("install",e=>{e.waitUntil(caches.open(CACHE_NAME).then(c=>c.addAll(["/","/manifest.json"])));self.skipWaiting();});' +
-      'self.addEventListener("activate",e=>{e.waitUntil(caches.keys().then(ks=>Promise.all(ks.filter(k=>k!==CACHE_NAME).map(k=>caches.delete(k)))));self.clients.claim();});' +
-      'self.addEventListener("fetch",e=>{if(e.request.method!=="GET")return;e.respondWith(fetch(e.request).catch(()=>caches.match(e.request)));});'
-  );
-});
-
-const publicDir = path.join(__dirname, 'public');
-if (fs.existsSync(publicDir)) {
-  app.use(express.static(publicDir));
-}
-
-app.get('/', (req, res) => {
-  res.type('html').send(
-    '<!DOCTYPE html><html lang="am"><head><meta charset="UTF-8" />' +
-      '<meta name="viewport" content="width=device-width, initial-scale=1.0" />' +
-      '<title>ጉዞ ፕላስ (Guzo Plus)</title>' +
-      '<link rel="manifest" href="/manifest.json" />' +
-      '<meta name="theme-color" content="#15803d" />' +
-      '<style>' +
-      '*{box-sizing:border-box;font-family:system-ui,-apple-system,sans-serif}' +
-      'body{margin:0;background:#e2e8f0;color:#0f172a}' +
-      '.wrap{max-width:560px;margin:0 auto;padding:12px 14px 28px}' +
-      'h1{margin:6px 0 12px;font-size:1.55rem;color:#0f172a;font-weight:700}' +
-      '.card{background:#ffffff;border:1px solid #cbd5e1;border-radius:10px;padding:14px;margin-bottom:12px;box-shadow:0 1px 3px rgba(0,0,0,0.06)}' +
-      '.call-label{font-size:0.9rem;color:#334155;margin-bottom:8px}' +
-      '.call-btn{display:block;width:100%;text-align:center;background:#15803d;color:#ffffff;text-decoration:none;padding:12px 14px;border-radius:8px;font-weight:700;font-size:1rem}' +
-      '.call-btn:hover{background:#166534}' +
-      '.nav-links{display:flex;flex-wrap:wrap;gap:12px;margin:10px 0 14px;font-size:0.95rem}' +
-      '.nav-links a{color:#1d4ed8;text-decoration:underline;font-weight:600}' +
-      '.section-title{margin:0 0 6px;font-size:1.1rem;font-weight:700;color:#0f172a}' +
-      '.tariff{font-size:0.84rem;color:#475569;margin-bottom:12px;line-height:1.4}' +
-      'label{display:block;font-size:0.88rem;font-weight:600;color:#1e293b;margin-top:10px;margin-bottom:4px}' +
-      'input,select{width:100%;padding:10px 12px;border-radius:7px;border:1px solid #94a3b8;background:#ffffff;color:#0f172a;font-size:0.95rem}' +
-      '.submit-btn{margin-top:14px;width:100%;padding:12px;border:none;border-radius:8px;background:#15803d;color:#ffffff;font-weight:700;font-size:1rem;cursor:pointer}' +
-      '.submit-btn:hover{background:#166534}' +
-      '#msg{margin-top:10px;font-size:0.9rem;font-weight:600;min-height:20px}' +
-      '.ride-item{border-top:1px solid #e2e8f0;padding:9px 0;font-size:0.88rem;color:#1e293b}' +
-      '.ride-item:first-child{border-top:none}' +
-      '</style></head><body>' +
-      '<div class="wrap">' +
-      '<h1>ጉዞ ፕላስ (Guzo Plus)</h1>' +
-      '<div class="card">' +
-      '<div class="call-label">በአንድ ንክኪ ይደውሉ (አንድሮይድ እና ሁሉም ስልክ):</div>' +
-      '<a class="call-btn" href="tel:0923579382">📞 ይደውሉ: 0923579382</a>' +
-      '</div>' +
-      '<div class="nav-links">' +
-      '<a href="#requestCard">ጉዞ</a>' +
-      '<a href="/driver">አሽከርካሪ</a>' +
-      '<a href="/admin">አስተዳደር</a>' +
-      '<a href="#recentCard">ፎርሞች</a>' +
-      '</div>' +
-      '<div id="requestCard" class="card">' +
-      '<h2 class="section-title">ጉዞ ይጠይቁ</h2>' +
-      '<div class="tariff">መነሻ 200 ብር | ጠዋት +50 | ማታ +50 | ሼር 25% ቅናሽ</div>' +
-      '<form id="rideForm">' +
-      '<label for="passengerName">ሙሉ ስም</label>' +
-      '<input id="passengerName" name="passengerName" placeholder="ሙሉ ስም ያስገቡ" required />' +
-      '<label for="phone">ስልክ ቁጥር</label>' +
-      '<input id="phone" name="phone" type="tel" placeholder="09..." required />' +
-      '<label for="pickup">መነሻ</label>' +
-      '<input id="pickup" name="pickup" placeholder="መነሻ ቦታ" required />' +
-      '<label for="dropoff">መድረሻ</label>' +
-      '<input id="dropoff" name="dropoff" placeholder="መድረሻ ቦታ" required />' +
-      '<label for="rideType">ዓይነት</label>' +
-      '<select id="rideType" name="rideType">' +
-      '<option value="shared">ሼር / ጋራ (25% ቅናሽ)</option>' +
-      '<option value="solo">የግል ጉዞ (Solo)</option>' +
-      '</select>' +
-      '<label for="timeTariff">ሰዓት ታሪፍ</label>' +
-      '<select id="timeTariff" name="timeTariff">' +
-      '<option value="now">አሁን ያለው ሰዓት</option>' +
-      '<option value="morning">ጠዋት (+50 ብር)</option>' +
-      '<option value="evening">ማታ (+50 ብር)</option>' +
-      '</select>' +
-      '<button class="submit-btn" type="submit">ጉዞ ይጠይቁ</button>' +
-      '</form>' +
-      '<div id="msg"></div>' +
-      '</div>' +
-      '<div id="recentCard" class="card">' +
-      '<h3 class="section-title">የቅርብ ጊዜ ጥያቄዎች</h3>' +
-      '<div id="ridesList">በመጫን ላይ...</div>' +
-      '</div>' +
-      '</div>' +
-      '<script>' +
-      'if("serviceWorker" in navigator){window.addEventListener("load",()=>{navigator.serviceWorker.register("/sw.js").catch(()=>{});});}' +
-      'const form=document.getElementById("rideForm"),msg=document.getElementById("msg"),ridesList=document.getElementById("ridesList");' +
-      'async function loadRides(){try{const res=await fetch("/api/rides");if(!res.ok){ridesList.textContent="ዝርዝር ማምጣት አልተቻለም።";return;}' +
-      'const rides=await res.json();if(!Array.isArray(rides)||rides.length===0){ridesList.textContent="ምንም የጉዞ ጥያቄ የለም።";return;}' +
-      'ridesList.innerHTML=rides.slice(0,8).map(r=>"<div class=\\"ride-item\\"><strong>"+(r.passengerName||r.name||"ተጓዥ")+"</strong>: "+(r.pickup||"")+" → "+(r.dropoff||"")+" | <strong>"+(r.fare||200)+" ብር</strong> ("+(r.status||"pending")+")</div>").join("");}catch(_){ridesList.textContent="ዝርዝሩን ማምጣት አልተቻለም።";}}' +
-      'form.addEventListener("submit",async(e)=>{e.preventDefault();msg.style.color="#15803d";msg.textContent="በመላክ ላይ...";' +
-      'const payload={passengerName:document.getElementById("passengerName").value.trim(),phone:document.getElementById("phone").value.trim(),pickup:document.getElementById("pickup").value.trim(),dropoff:document.getElementById("dropoff").value.trim(),rideType:document.getElementById("rideType").value,timeTariff:document.getElementById("timeTariff").value};' +
-      'try{const res=await fetch("/api/rides",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});' +
-      'const data=await res.json();if(res.ok){msg.style.color="#15803d";msg.textContent="✅ ጥያቄዎ በ"+(data.fare||200)+" ብር ተመዝግቧል።";form.reset();loadRides();}else{msg.style.color="#dc2626";msg.textContent="❌ ስህተት፡ "+(data.error||"መላክ አልተቻለም");}}catch(err){msg.style.color="#dc2626";msg.textContent="❌ የኔትወርክ ስህተት፡ "+err.message;}});' +
-      'loadRides();</script></body></html>'
-  );
-});
-
-app.get('/api/rides', async (req, res) => {
-  try {
-    const rides = await Ride.find().sort({ createdAt: -1 }).limit(25);
-    res.json(rides);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.post('/api/rides', async (req, res) => {
-  try {
-    const rideType = req.body.rideType || 'solo';
-    const timeTariff = req.body.timeTariff || 'now';
-    const fare = calculateFare(rideType, timeTariff);
-    const ride = await Ride.create({ ...req.body, rideType, timeTariff, fare });
-    if (TELEGRAM_CHAT_ID) {
-      await sendTelegramMessage(
-        TELEGRAM_CHAT_ID,
-        `🚖 አዲስ የጉዞ ጥያቄ (Guzo Plus)\nስም፡ ${ride.passengerName || ride.name || '-'}\nስልክ፡ ${ride.phone || '-'}\nከ፡ ${ride.pickup || '-'}\nወደ፡ ${ride.dropoff || '-'}\nዓይነት፡ ${rideType} | ዋጋ፡ ${fare} ብር`
-      );
-    }
-    res.status(201).json(ride);
-  } catch (err) {
-    res.status(400).json({ error: err.message });
-  }
-});
-
-app.patch('/api/rides/:id', async (req, res) => {
-  const pass = req.headers['x-admin-password'];
-  if (pass !== ADMIN_PASSWORD) {
-    return res.status(401).json({ error: 'የተሳሳተ የአስተዳዳሪ ይለፍ ቃል' });
-  }
-  try {
-    const updated = await Ride.findByIdAndUpdate(
-      req.params.id,
-      { status: req.body.status },
-      { new: true }
-    );
-    if (!updated) return res.status(404).json({ error: 'ጉዞው አልተገኘም' });
-    res.json(updated);
-  } catch (err) {
-    res.status(400).json({ error: err.message });
-  }
-});
-
-app.delete('/api/rides/:id', async (req, res) => {
-  const pass = req.headers['x-admin-password'];
-  if (pass !== ADMIN_PASSWORD) {
-    return res.status(401).json({ error: 'የተሳሳተ የአስተዳዳሪ ይለፍ ቃል' });
-  }
-  try {
-    await Ride.findByIdAndDelete(req.params.id);
-    res.json({ ok: true });
-  } catch (err) {
-    res.status(400).json({ error: err.message });
-  }
-});
-
-app.get('/api/drivers', async (req, res) => {
-  try {
-    const drivers = await Driver.find().sort({ createdAt: -1 }).limit(25);
-    res.json(drivers);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.post('/api/drivers', async (req, res) => {
-  try {
-    const driver = await Driver.create(req.body);
-    if (TELEGRAM_CHAT_ID) {
-      await sendTelegramMessage(
-        TELEGRAM_CHAT_ID,
-        `🚘 አዲስ የሾፌር ምዝገባ (Guzo Plus)\nስም፡ ${driver.fullName}\nስልክ፡ ${driver.phone}\nተሽከርካሪ፡ ${driver.vehicleType}\nሰሌዳ፡ ${driver.plateNumber || '-'}\nአካባቢ፡ ${driver.area || '-'}`
-      );
-    }
-    res.status(201).json(driver);
-  } catch (err) {
-    res.status(400).json({ error: err.message });
-  }
-});
-
-app.get('/driver', (req, res) => {
-  res.type('html').send(
-    '<!DOCTYPE html><html lang="am"><head><meta charset="UTF-8" />' +
-      '<meta name="viewport" content="width=device-width, initial-scale=1.0" />' +
-      '<title>ጉዞ ፕላስ | የሾፌር መመዝገቢያ</title>' +
-      '<style>*{box-sizing:border-box;font-family:system-ui,-apple-system,sans-serif}' +
-      'body{margin:0;background:#e2e8f0;color:#0f172a}' +
-      '.wrap{max-width:560px;margin:0 auto;padding:12px 14px 28px}' +
-      'h1{margin:6px 0 12px;font-size:1.45rem;color:#0f172a}' +
-      '.nav{display:flex;gap:12px;margin-bottom:12px;font-size:0.95rem}' +
-      '.nav a{color:#1d4ed8;font-weight:600;text-decoration:underline}' +
-      '.card{background:#fff;border:1px solid #cbd5e1;border-radius:10px;padding:14px;margin-bottom:12px}' +
-      'label{display:block;font-size:0.88rem;font-weight:600;margin-top:10px;margin-bottom:4px}' +
-      'input,select{width:100%;padding:10px 12px;border-radius:7px;border:1px solid #94a3b8;background:#fff}' +
-      '.btn{margin-top:14px;width:100%;padding:12px;border:none;border-radius:8px;background:#15803d;color:#fff;font-weight:700;font-size:1rem;cursor:pointer}' +
-      '#dMsg{margin-top:10px;font-weight:600;min-height:20px}' +
-      '.item{border-top:1px solid #e2e8f0;padding:8px 0;font-size:0.88rem}' +
-      '.item:first-child{border-top:none}</style></head><body>' +
-      '<div class="wrap"><h1>ጉዞ ፕላስ - የሾፌር መመዝገቢያ</h1>' +
-      '<div class="nav"><a href="/">ጉዞ</a><a href="/driver">አሽከርካሪ</a><a href="/admin">አስተዳደር</a></div>' +
-      '<div class="card"><h2 style="margin:0 0 8px;font-size:1.1rem">አዲስ አሽከርካሪ ይመዝገቡ</h2>' +
-      '<form id="driverForm">' +
-      '<label for="fullName">ሙሉ ስም</label><input id="fullName" required placeholder="የሾፌሩ ሙሉ ስም" />' +
-      '<label for="phone">ስልክ ቁጥር</label><input id="phone" type="tel" required placeholder="09..." />' +
-      '<label for="vehicleType">የተሽከርካሪ ዓይነት</label>' +
-      '<select id="vehicleType"><option value="ባጃጅ (Bajaj)">ባጃጅ (Bajaj)</option><option value="መኪና (Sedan)">መኪና (Sedan)</option><option value="ሚኒባስ (Minibus)">ሚኒባስ (Minibus)</option></select>' +
-      '<label for="plateNumber">ሰሌዳ ቁጥር</label><input id="plateNumber" placeholder="ለምሳሌ፡ AA-..." />' +
-      '<label for="area">የሚሰሩበት አካባቢ</label><input id="area" placeholder="ለምሳሌ፡ ጎተራ፣ ቦሌ፣ ሳሪስ" />' +
-      '<button class="btn" type="submit">አሽከርካሪ መዝግብ</button></form><div id="dMsg"></div></div>' +
-      '<div class="card"><h3 style="margin:0 0 8px">የተመዘገቡ አሽከርካሪዎች</h3><div id="driversList">በመጫን ላይ...</div></div></div>' +
-      '<script>' +
-      'const dForm=document.getElementById("driverForm"),dMsg=document.getElementById("dMsg"),dList=document.getElementById("driversList");' +
-      'async function loadDrivers(){try{const r=await fetch("/api/drivers");const list=await r.json();' +
-      'if(!Array.isArray(list)||!list.length){dList.textContent="ገና የተመዘገበ አሽከርካሪ የለም።";return;}' +
-      'dList.innerHTML=list.slice(0,10).map(d=>"<div class=\\"item\\"><strong>"+d.fullName+"</strong> ("+d.phone+") — "+d.vehicleType+" | "+(d.area||"-")+"</div>").join("");}catch(_){dList.textContent="ዝርዝር ማምጣት አልተቻለም።";}}' +
-      'dForm.addEventListener("submit",async(e)=>{e.preventDefault();dMsg.style.color="#15803d";dMsg.textContent="በመመዝገብ ላይ...";' +
-      'const payload={fullName:document.getElementById("fullName").value.trim(),phone:document.getElementById("phone").value.trim(),vehicleType:document.getElementById("vehicleType").value,plateNumber:document.getElementById("plateNumber").value.trim(),area:document.getElementById("area").value.trim()};' +
-      'try{const r=await fetch("/api/drivers",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});' +
-      'if(r.ok){dMsg.style.color="#15803d";dMsg.textContent="✅ አሽከርካሪው በስኬት ተመዝግቧል።";dForm.reset();loadDrivers();}else{const err=await r.json();dMsg.style.color="#dc2626";dMsg.textContent="❌ "+(err.error||"ስህተት");}}catch(err){dMsg.style.color="#dc2626";dMsg.textContent="❌ "+err.message;}});' +
-      'loadDrivers();</script></body></html>'
-  );
-});
-
-app.get('/admin', (req, res) => {
-  res.type('html').send(
-    '<!DOCTYPE html><html lang="am"><head><meta charset="UTF-8" />' +
-      '<meta name="viewport" content="width=device-width, initial-scale=1.0" />' +
-      '<title>ጉዞ ፕላስ | አስተዳደር</title>' +
-      '<style>*{box-sizing:border-box;font-family:system-ui,-apple-system,sans-serif}' +
-      'body{margin:0;background:#e2e8f0;color:#0f172a}' +
-      '.wrap{max-width:760px;margin:0 auto;padding:12px 14px 28px}' +
-      '.top{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}' +
-      '.top h1{margin:0;font-size:1.35rem;color:#0f172a}' +
-      '.top a{color:#15803d;font-weight:700;text-decoration:none}' +
-      '.card{background:#fff;border:1px solid #cbd5e1;border-radius:10px;padding:14px;margin-bottom:12px}' +
-      '.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px}' +
-      '.stat{background:#f8fafc;border:1px solid #cbd5e1;border-radius:8px;padding:10px;text-align:center}' +
-      '.stat b{display:block;font-size:1.25rem;color:#15803d}' +
-      'input{width:100%;padding:10px;border-radius:7px;border:1px solid #94a3b8;margin-top:6px}' +
-      'button{padding:8px 12px;border:none;border-radius:7px;font-weight:700;cursor:pointer;margin-top:8px;margin-right:6px}' +
-      '.btn-green{background:#15803d;color:#fff;width:100%;padding:11px}' +
-      '.btn-ok{background:#16a34a;color:#fff}' +
-      '.btn-done{background:#2563eb;color:#fff}' +
-      '.btn-del{background:#dc2626;color:#fff}' +
-      '.ride{border-top:1px solid #e2e8f0;padding:10px 0}' +
-      '.ride:first-child{border-top:none}</style></head><body>' +
-      '<div class="wrap"><div class="top"><h1>ጉዞ ፕላስ - አስተዳደር</h1><a href="/">← ዋና ገጽ</a></div>' +
-      '<div id="loginBox" class="card"><h3>የአስተዳዳሪ መግቢያ</h3>' +
-      '<input id="adminPass" type="password" placeholder="የአስተዳዳሪ ይለፍ ቃል" />' +
-      '<button class="btn-green" onclick="loginAdmin()">ግባ</button></div>' +
-      '<div id="panel" style="display:none"><div class="stats">' +
-      '<div class="stat"><b id="sTotal">0</b><span>ጠቅላላ</span></div>' +
-      '<div class="stat"><b id="sPending" style="color:#ca8a04">0</b><span>በመጠባበቅ</span></div>' +
-      '<div class="stat"><b id="sDone" style="color:#2563eb">0</b><span>የተጠናቀቁ</span></div></div>' +
-      '<div class="card"><div style="display:flex;justify-content:space-between;align-items:center">' +
-      '<h3 style="margin:0">የጉዞ ጥያቄዎች</h3><button class="btn-done" style="margin:0" onclick="loadAdminRides()">አድስ</button></div>' +
-      '<div id="adminList" style="margin-top:10px">በመጫን ላይ...</div></div></div></div>' +
-      '<script>' +
-      'let savedPass=sessionStorage.getItem("guzo_admin_pass")||"";' +
-      'if(savedPass){document.getElementById("loginBox").style.display="none";document.getElementById("panel").style.display="block";loadAdminRides();}' +
-      'function loginAdmin(){const p=document.getElementById("adminPass").value.trim();if(!p)return;savedPass=p;sessionStorage.setItem("guzo_admin_pass",p);document.getElementById("loginBox").style.display="none";document.getElementById("panel").style.display="block";loadAdminRides();}' +
-      'async function loadAdminRides(){const list=document.getElementById("adminList");try{const res=await fetch("/api/rides");const rides=await res.json();' +
-      'document.getElementById("sTotal").textContent=rides.length;' +
-      'document.getElementById("sPending").textContent=rides.filter(r=>(r.status||"pending")==="pending").length;' +
-      'document.getElementById("sDone").textContent=rides.filter(r=>r.status==="completed").length;' +
-      'if(!rides.length){list.textContent="ምንም የጉዞ ጥያቄ የለም።";return;}' +
-      'list.innerHTML=rides.map(r=>"<div class=\\"ride\\"><div><strong>"+(r.passengerName||r.name||"ተጓዥ")+"</strong> ("+(r.phone||"-")+") — <strong>"+(r.fare||200)+" ብር</strong> ["+(r.status||"pending")+"]</div>"+' +
-      '"<div style=\\"color:#475569;margin:4px 0\\">📍 "+(r.pickup||"-")+" → 🎯 "+(r.dropoff||"-")+" ("+(r.rideType||"solo")+")</div>"+' +
-      '"<div><button class=\\"btn-ok\\" onclick=\\"setStatus(\'"+r._id+"\',\'accepted\')\\">አጽድቅ</button>"+' +
-      '"<button class=\\"btn-done\\" onclick=\\"setStatus(\'"+r._id+"\',\'completed\')\\">አጠናቅቅ</button>"+' +
-      '"<button class=\\"btn-del\\" onclick=\\"delRide(\'"+r._id+"\')\\">አጥፋ</button></div></div>").join("");}catch(e){list.textContent="ስህተት ተፈጥሯል።";}}' +
-      'async function setStatus(id,status){const res=await fetch("/api/rides/"+id,{method:"PATCH",headers:{"Content-Type":"application/json","x-admin-password":savedPass},body:JSON.stringify({status})});if(res.status===401){alert("የተሳሳተ የይለፍ ቃል!");sessionStorage.removeItem("guzo_admin_pass");location.reload();return;}loadAdminRides();}' +
-      'async function delRide(id){if(!confirm("ይህንን ጥያቄ ማጥፋት ይፈልጋሉ?"))return;const res=await fetch("/api/rides/"+id,{method:"DELETE",headers:{"x-admin-password":savedPass}});if(res.status===401){alert("የተሳሳተ የይለፍ ቃል!");sessionStorage.removeItem("guzo_admin_pass");location.reload();return;}loadAdminRides();}' +
-      '</script></body></html>'
-  );
-});
-
-process.on('uncaughtException', (err) => {
-  console.error('Uncaught Exception:', err);
-});
-
-process.on('unhandledRejection', (err) => {
-  console.error('Unhandled Rejection:', err);
-});
+let telegramPollingStarted = false;
 
 async function connectAtlas() {
   if (!MONGO_URI) {
-    console.error('❌ MONGO_URI or MONGODB_URI is missing');
+    console.warn('MONGODB_URI is not set. Running without Atlas DB connection.');
     return;
   }
-  await mongoose.connect(MONGO_URI, {
-    family: 4,
-    serverSelectionTimeoutMS: 30000,
-    socketTimeoutMS: 45000,
-    connectTimeoutMS: 45000
+
+  const client = new MongoClient(MONGO_URI, {
+    serverSelectionTimeoutMS: 8000,
   });
-  console.log('✅ Connected to MongoDB successfully!');
+
+  try {
+    await client.connect();
+    db = client.db(DB_NAME);
+    await db.command({ ping: 1 });
+    dbStatus = 'Connected to MongoDB Atlas';
+    console.log('Connected to MongoDB Atlas successfully!');
+  } catch (err) {
+    db = null;
+    dbStatus = `Connection failed: ${err.message}`;
+    console.error('MongoDB Atlas connection error:', err.message);
+  }
 }
 
-app.listen(PORT, async () => {
-  console.log(`Server is running on port ${PORT}`);
-  try {
-    await connectAtlas();
-  } catch (err) {
-    console.error('❌ MongoDB connection error:', err.message);
+async function sendTelegramText(chatId, text) {
+  const targetChat = chatId || TELEGRAM_CHAT_ID;
+  if (!TELEGRAM_BOT_TOKEN || !targetChat) {
+    return;
   }
+
+  try {
+    const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: targetChat,
+        text,
+        parse_mode: 'Markdown',
+      }),
+    });
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error('Telegram sendMessage failed:', errText);
+    }
+  } catch (err) {
+    console.error('Telegram notification error:', err.message);
+  }
+}
+
+async function sendTelegramNotification(ride) {
+  const text = [
+    '🚕 *አዲስ የጉዞ ጥያቄ — ጉዞ ፕላስ (Guzo Plus)*',
+    `👤 *ስም:* ${ride.name}`,
+    `📞 *ስልክ:* ${ride.phone}`,
+    `📍 *መነሻ:* ${ride.pickup}`,
+    `🎯 *መድረሻ:* ${ride.dropoff}`,
+    `📌 *ሁኔታ:* ${ride.status || 'pending'}`,
+  ].join('\n');
+  await sendTelegramText(TELEGRAM_CHAT_ID, text);
+}
+
+async function sendDriverNotification(driver) {
+  const text = [
+    '🚗 *አዲስ የአሽከርካሪ ምዝገባ — ጉዞ ፕላስ (Guzo Plus)*',
+    `👤 *ስም:* ${driver.name}`,
+    `📞 *ስልክ:* ${driver.phone}`,
+    `🚘 *ተሽከርካሪ:* ${driver.vehicleType}`,
+    `🔢 *ሰሌዳ:* ${driver.plateNumber}`,
+    `📌 *ሁኔታ:* ${driver.status || 'pending'}`,
+  ].join('\n');
+  await sendTelegramText(TELEGRAM_CHAT_ID, text);
+}
+
+async function handleTelegramMessage(msg) {
+  if (!msg || !msg.chat) return;
+  const chatId = msg.chat.id;
+  const rawText = (msg.text || '').trim();
+  const lower = rawText.toLowerCase();
+
+  if (lower === '/start' || lower === 'start' || lower === '/menu' || lower === 'menu') {
+    const menuText = [
+      '🚕 *እንኳን ወደ ጉዞ ፕላስ (Guzo Plus) በደህና መጡ!*',
+      '',
+      'የሚፈልጉትን አማራጭ ቁጥር ይላኩ፦',
+      '1 — 📋 የቅርብ ጊዜ የጉዞ ጥያቄዎች',
+      '2 — 🚗 የተመዘገቡ አሽከርካሪዎች',
+      '🌐 ድረ-ገጽ፡ https://guzo-plus-05wo.onrender.com/',
+    ].join('\n');
+    await sendTelegramText(chatId, menuText);
+    return;
+  }
+
+  if (rawText === '1' || lower === '/rides') {
+    if (!db) {
+      await sendTelegramText(chatId, '⚠️ ዳታቤዝ እስካሁን አልተገናኘም።');
+      return;
+    }
+    const rides = await db.collection('rides').find().sort({ createdAt: -1 }).limit(10).toArray();
+    if (!rides.length) {
+      await sendTelegramText(chatId, 'ℹ️ እስካሁን የተመዘገበ የጉዞ ጥያቄ የለም።');
+      return;
+    }
+    const lines = ['📋 *የቅርብ ጊዜ የጉዞ ጥያቄዎች:*', ''];
+    rides.forEach((r, idx) => {
+      lines.push(
+        `${idx + 1}. *${r.name}* (${r.phone}) — _${r.status || 'pending'}_`,
+        `   📍 ${r.pickup} → 🎯 ${r.dropoff}`
+      );
+    });
+    await sendTelegramText(chatId, lines.join('\n'));
+    return;
+  }
+
+  if (rawText === '2' || lower === '/drivers') {
+    if (!db) {
+      await sendTelegramText(chatId, '⚠️ ዳታቤዝ እስካሁን አልተገናኘም።');
+      return;
+    }
+    const drivers = await db.collection('drivers').find().sort({ createdAt: -1 }).limit(10).toArray();
+    if (!drivers.length) {
+      await sendTelegramText(chatId, 'ℹ️ እስካሁን የተመዘገበ አሽከርካሪ የለም።');
+      return;
+    }
+    const lines = ['🚗 *የተመዘገቡ አሽከርካሪዎች:*', ''];
+    drivers.forEach((d, idx) => {
+      lines.push(
+        `${idx + 1}. *${d.name}* (${d.phone}) — _${d.status || 'pending'}_`,
+        `   🚘 ${d.vehicleType} | 🔢 ${d.plateNumber}`
+      );
+    });
+    await sendTelegramText(chatId, lines.join('\n'));
+    return;
+  }
+
+  if (rawText) {
+    await sendTelegramText(
+      chatId,
+      'ℹ️ ሜኑ ለማየት */start* ወይም *start* ይላኩ፣ ወይም *1* (ጉዞዎች) / *2* (አሽከርካሪዎች) ይምረጡ።'
+    );
+  }
+}
+
+async function pollTelegramUpdates() {
+  if (!TELEGRAM_BOT_TOKEN || telegramPollingStarted) return;
+  telegramPollingStarted = true;
+
+  try {
+    await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/deleteWebhook`);
+  } catch {}
+
+  console.log('Telegram bot polling started.');
+
+  while (true) {
+    try {
+      const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getUpdates?offset=${telegramOffset}&timeout=25`;
+      const res = await fetch(url);
+      if (!res.ok) {
+        const errText = await res.text();
+        console.warn('Telegram getUpdates status:', res.status, errText);
+        await new Promise((r) => setTimeout(r, 4000));
+        continue;
+      }
+      const data = await res.json();
+      const updates = Array.isArray(data.result) ? data.result : [];
+      for (const upd of updates) {
+        if (typeof upd.update_id === 'number') {
+          telegramOffset = upd.update_id + 1;
+        }
+        if (upd.message) {
+          await handleTelegramMessage(upd.message);
+        }
+      }
+    } catch (err) {
+      console.error('Telegram polling loop error:', err.message);
+      await new Promise((r) => setTimeout(r, 4000));
+    }
+  }
+}
+
+function readJsonBody(req) {
+  return new Promise((resolve, reject) => {
+    let raw = '';
+    req.on('data', (chunk) => {
+      raw += chunk.toString('utf8');
+      if (raw.length > 1e6) {
+        reject(new Error('Request body too large'));
+      }
+    });
+    req.on('end', () => {
+      if (!raw) return resolve({});
+      try {
+        resolve(JSON.parse(raw));
+      } catch {
+        reject(new Error('Invalid JSON'));
+      }
+    });
+    req.on('error', reject);
+  });
+}
+
+function sendJson(res, statusCode, data) {
+  res.writeHead(statusCode, { 'Content-Type': 'application/json; charset=utf-8' });
+  res.end(JSON.stringify(data));
+}
+
+function isAdminAuthorized(req) {
+  const headerVal = req.headers['x-admin-password'] || '';
+  const a = Buffer.from(String(headerVal), 'utf8');
+  const b = Buffer.from(String(ADMIN_PASSWORD), 'utf8');
+  if (a.length === 0 || a.length !== b.length) return false;
+  return crypto.timingSafeEqual(a, b);
+}
+
+const allowedRootImages = new Set([
+  '1795448273390.jpg',
+  '1795448572602.jpg',
+  '1795448585057.jpg',
+]);
+
+const htmlPage = `<!DOCTYPE html>
+<html lang="am">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="google-site-verification" content="0uqsLANTDpAi_ixeaOjGyYczRGibpgfGZyc0DFEzdjU" />
+  <title>ጉዞ ፕላስ | Guzo Plus</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #f3f7f4;
+      color: #16241c;
+      line-height: 1.6;
+    }
+    .hero {
+      max-width: 780px;
+      margin: 36px auto;
+      background: #ffffff;
+      padding: 32px 24px;
+      border-radius: 16px;
+      box-shadow: 0 10px 28px rgba(0, 0, 0, 0.08);
+      text-align: center;
+    }
+    .badge {
+      display: inline-block;
+      background: #dcfce7;
+      color: #166534;
+      padding: 6px 14px;
+      border-radius: 999px;
+      font-size: 13px;
+      font-weight: bold;
+      margin-bottom: 12px;
+    }
+    h1 {
+      margin: 0 0 10px;
+      font-size: 30px;
+      color: #15803d;
+    }
+    .lead {
+      font-size: 16px;
+      color: #374151;
+      margin: 0 0 22px;
+    }
+    .gallery {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 14px;
+      margin: 20px 0 24px;
+    }
+    .gallery figure {
+      margin: 0;
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    .gallery img {
+      width: 100%;
+      height: 185px;
+      object-fit: cover;
+      display: block;
+    }
+    .gallery figcaption {
+      padding: 8px 10px;
+      font-size: 13px;
+      color: #374151;
+    }
+    .features {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+      gap: 12px;
+      margin: 20px 0 26px;
+      text-align: left;
+    }
+    .box {
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      padding: 14px;
+    }
+    .box h3 {
+      margin: 0 0 4px;
+      font-size: 15px;
+      color: #111827;
+    }
+    .box p {
+      margin: 0;
+      font-size: 13px;
+      color: #4b5563;
+    }
+    .card {
+      margin-top: 22px;
+      padding: 20px;
+      background: #f8faf9;
+      border: 1px solid #d1fae5;
+      border-radius: 14px;
+      text-align: left;
+    }
+    .card h2 {
+      margin: 0 0 14px;
+      font-size: 20px;
+      color: #14532d;
+      text-align: center;
+    }
+    .card h3 {
+      margin: 18px 0 10px;
+      font-size: 16px;
+      color: #14532d;
+    }
+    .field {
+      margin-bottom: 12px;
+    }
+    label {
+      display: block;
+      font-size: 13px;
+      font-weight: bold;
+      margin-bottom: 4px;
+      color: #1f2937;
+    }
+    input, select {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      font-size: 15px;
+      background: #ffffff;
+    }
+    .btn {
+      width: 100%;
+      background: #15803d;
+      color: #ffffff;
+      border: none;
+      padding: 12px 20px;
+      border-radius: 10px;
+      font-size: 16px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+    .btn:hover {
+      background: #166534;
+    }
+    .btn-sm {
+      width: auto;
+      padding: 7px 12px;
+      font-size: 13px;
+      border-radius: 6px;
+      margin-right: 6px;
+      margin-top: 6px;
+    }
+    .btn-secondary {
+      background: #0369a1;
+    }
+    .btn-secondary:hover {
+      background: #075985;
+    }
+    .btn-danger {
+      background: #b91c1c;
+    }
+    .btn-danger:hover {
+      background: #991b1b;
+    }
+    #msg, #driverMsg, #adminMsg {
+      margin-top: 10px;
+      font-size: 14px;
+      font-weight: bold;
+      text-align: center;
+    }
+    .login-row {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 10px;
+    }
+    .login-row input {
+      flex: 1 1 200px;
+    }
+    .ride-item {
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
+      padding: 12px;
+      margin-bottom: 10px;
+    }
+    .ride-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .status-pill {
+      display: inline-block;
+      padding: 2px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: bold;
+      background: #fef3c7;
+      color: #92400e;
+    }
+    .status-accepted {
+      background: #dbeafe;
+      color: #1e40af;
+    }
+    .status-completed {
+      background: #dcfce7;
+      color: #166534;
+    }
+    .ride-meta {
+      font-size: 13px;
+      color: #374151;
+      margin-top: 6px;
+    }
+    .footer {
+      margin-top: 24px;
+      font-size: 13px;
+      color: #6b7280;
+    }
+  </style>
+</head>
+<body>
+  <main class="hero">
+    <div class="badge">ጉዞ ፕላስ • Guzo Plus</div>
+    <h1>ፈጣን እና አስተማማኝ የጉዞ አገልግሎት</h1>
+    <p class="lead">
+      በአዲስ አበባ እና በዙሪያዋ ፈጣን፣ ምቹ እና አስተማማኝ የጉዞና የትራንስፖርት መፍትሄ።<br />
+      Fast, safe, and reliable ride-sharing experience.
+    </p>
+
+    <section class="gallery">
+      <figure>
+        <img src="/1795448273390.jpg" alt="ጉዞ ፕላስ የከተማ ትራንስፖርት" />
+        <figcaption>ጉዞ ፕላስ • Guzo Plus</figcaption>
+      </figure>
+      <figure>
+        <img src="/1795448572602.jpg" alt="ጉዞ ፕላስ ትልቅ ስክሪን ማስታወቂያ" />
+        <figcaption>የጉዞ ፕላስ ከተማ ማስታወቂያ</figcaption>
+      </figure>
+      <figure>
+        <img src="/1795448585057.jpg" alt="ጉዞ ፕላስ በመብራት ላይ የቆመ መኪና" />
+        <figcaption>በመብራት ላይ የቆመ ጉዞ ፕላስ</figcaption>
+      </figure>
+    </section>
+
+    <section class="features">
+      <div class="box">
+        <h3>ፈጣን ጥሪ</h3>
+        <p>በቀላሉ እና በፍጥነት ቅርብ ያለ ተሽከርካሪ ያግኙ።</p>
+      </div>
+      <div class="box">
+        <h3>አስተማማኝነት</h3>
+        <p>ግልጽ ክፍያ እና ደህንነቱ የተጠበቀ የጉዞ ልምድ።</p>
+      </div>
+      <div class="box">
+        <h3>ቀላል አጠቃቀም</h3>
+        <p>በስልክ እና በድረ-ገጽ በቀላሉ የሚደረስ አገልግሎት።</p>
+      </div>
+    </section>
+
+    <section id="book" class="card">
+      <h2>የጉዞ ጥያቄ ያስገቡ (Request a Ride)</h2>
+      <form id="rideForm">
+        <div class="field">
+          <label for="name">ሙሉ ስም</label>
+          <input id="name" name="name" type="text" required placeholder="ለምሳሌ፡ አበበ ከበደ" />
+        </div>
+        <div class="field">
+          <label for="phone">ስልክ ቁጥር</label>
+          <input id="phone" name="phone" type="tel" required placeholder="09..." />
+        </div>
+        <div class="field">
+          <label for="pickup">መነሻ ቦታ (Pickup)</label>
+          <input id="pickup" name="pickup" type="text" required placeholder="ለምሳሌ፡ ጎተራ" />
+        </div>
+        <div class="field">
+          <label for="dropoff">መድረሻ ቦታ (Drop-off)</label>
+          <input id="dropoff" name="dropoff" type="text" required placeholder="ለምሳሌ፡ ቦሌ" />
+        </div>
+        <button class="btn" type="submit">ጉዞ ይጠይቁ</button>
+      </form>
+      <div id="msg"></div>
+    </section>
+
+    <section id="driver-register" class="card">
+      <h2>የአሽከርካሪ ምዝገባ (Driver Registration)</h2>
+      <form id="driverForm">
+        <div class="field">
+          <label for="driverName">የአሽከርካሪ ሙሉ ስም</label>
+          <input id="driverName" name="driverName" type="text" required placeholder="ለምሳሌ፡ ታደሰ በቀለ" />
+        </div>
+        <div class="field">
+          <label for="driverPhone">ስልክ ቁጥር</label>
+          <input id="driverPhone" name="driverPhone" type="tel" required placeholder="09..." />
+        </div>
+        <div class="field">
+          <label for="vehicleType">የተሽከርካሪ ዓይነት (Vehicle Type)</label>
+          <select id="vehicleType" name="vehicleType" required>
+            <option value="Sedan / ሲዳን">Sedan / ሲዳን</option>
+            <option value="Minivan / ሚኒቫን">Minivan / ሚኒቫን</option>
+            <option value="SUV / ኤስ.ዩ.ቪ">SUV / ኤስ.ዩ.ቪ</option>
+            <option value="Motorcycle / ሞተርሳይክል">Motorcycle / ሞተርሳይክል</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="plateNumber">የሰሌዳ ቁጥር (Plate Number)</label>
+          <input id="plateNumber" name="plateNumber" type="text" required placeholder="ለምሳሌ፡ 3-A12345 AA" />
+        </div>
+        <button class="btn btn-secondary" type="submit">እንደ አሽከርካሪ ይመዝገቡ</button>
+      </form>
+      <div id="driverMsg"></div>
+    </section>
+
+    <section id="admin" class="card">
+      <h2>የአስተዳደር ክፍል — የይለፍ ቃል ያስገቡ</h2>
+      <div class="login-row">
+        <input id="adminPassInput" type="password" placeholder="የአስተዳደር የይለፍ ቃል (Password)" />
+        <button id="unlockAdminBtn" class="btn btn-sm btn-secondary" type="button">ግባ</button>
+        <button id="lockAdminBtn" class="btn btn-sm btn-danger" type="button" style="display:none;">ውጣ (Lock)</button>
+      </div>
+      <div id="adminMsg"></div>
+      <h3>የጉዞ ጥያቄዎች</h3>
+      <div id="ridesList"></div>
+      <h3>የተመዘገቡ አሽከርካሪዎች</h3>
+      <div id="driversList"></div>
+    </section>
+
+    <div class="footer">
+      © 2026 Guzo Plus (ጉዞ ፕላስ) — https://guzo-plus-05wo.onrender.com/
+    </div>
+  </main>
+
+  <script>
+    const form = document.getElementById('rideForm');
+    const msg = document.getElementById('msg');
+    const driverForm = document.getElementById('driverForm');
+    const driverMsg = document.getElementById('driverMsg');
+    const ridesList = document.getElementById('ridesList');
+    const driversList = document.getElementById('driversList');
+    const adminMsg = document.getElementById('adminMsg');
+    const passInput = document.getElementById('adminPassInput');
+    const unlockBtn = document.getElementById('unlockAdminBtn');
+    const lockBtn = document.getElementById('lockAdminBtn');
+
+    let adminPassword = sessionStorage.getItem('guzo_admin_pass') || '';
+    if (adminPassword) {
+      passInput.value = adminPassword;
+      lockBtn.style.display = 'inline-block';
+    }
+
+    function escapeHtml(str) {
+      return String(str || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    function statusLabel(status) {
+      if (status === 'accepted' || status === 'approved') return 'ተቀባይነት አግኝቷል';
+      if (status === 'completed') return 'ተጠናቋል';
+      return 'በመጠባበቅ ላይ';
+    }
+
+    function statusClass(status) {
+      if (status === 'accepted' || status === 'approved') return 'status-pill status-accepted';
+      if (status === 'completed') return 'status-pill status-completed';
+      return 'status-pill';
+    }
+
+    function adminHeaders(extra = {}) {
+      return {
+        ...extra,
+        'x-admin-password': adminPassword,
+      };
+    }
+
+    async function loadAdminData() {
+      if (!adminPassword) {
+        adminMsg.style.color = '#4b5563';
+        adminMsg.textContent = 'ዝርዝሩን ለማየት የአስተዳደር የይለፍ ቃል ያስገቡ።';
+        ridesList.innerHTML = '';
+        driversList.innerHTML = '';
+        return;
+      }
+
+      adminMsg.style.color = '#374151';
+      adminMsg.textContent = 'መረጃዎች እየተጫኑ ነው...';
+      try {
+        const [ridesRes, driversRes] = await Promise.all([
+          fetch('/api/rides', { headers: adminHeaders() }),
+          fetch('/api/drivers', { headers: adminHeaders() }),
+        ]);
+        const ridesData = await ridesRes.json();
+        const driversData = await driversRes.json();
+
+        if (!ridesRes.ok || !driversRes.ok) {
+          adminMsg.style.color = '#b91c1c';
+          adminMsg.textContent = ridesData.error || driversData.error || 'የይለፍ ቃል ስህተት ነው።';
+          ridesList.innerHTML = '';
+          driversList.innerHTML = '';
+          return;
+        }
+
+        adminMsg.textContent = '';
+        lockBtn.style.display = 'inline-block';
+
+        const rides = ridesData.rides || [];
+        if (!rides.length) {
+          ridesList.innerHTML = '<p style="text-align:center;color:#6b7280;">እስካሁን የተመዘገበ የጉዞ ጥያቄ የለም።</p>';
+        } else {
+          ridesList.innerHTML = rides.map((r) => \`
+            <div class="ride-item">
+              <div class="ride-top">
+                <strong>\${escapeHtml(r.name)} (\${escapeHtml(r.phone)})</strong>
+                <span class="\${statusClass(r.status)}">\${statusLabel(r.status)}</span>
+              </div>
+              <div class="ride-meta">
+                መነሻ፡ <strong>\${escapeHtml(r.pickup)}</strong> → መድረሻ፡ <strong>\${escapeHtml(r.dropoff)}</strong>
+              </div>
+              <div>
+                <button class="btn btn-sm btn-secondary" type="button" onclick="updateStatus('\${r._id}', 'accepted')">ተቀበል</button>
+                <button class="btn btn-sm" type="button" onclick="updateStatus('\${r._id}', 'completed')">አጠናቅቅ</button>
+                <button class="btn btn-sm btn-danger" type="button" onclick="deleteRide('\${r._id}')">አጥፋ</button>
+              </div>
+            </div>
+          \`).join('');
+        }
+
+        const drivers = driversData.drivers || [];
+        if (!drivers.length) {
+          driversList.innerHTML = '<p style="text-align:center;color:#6b7280;">እስካሁን የተመዘገበ አሽከርካሪ የለም።</p>';
+        } else {
+          driversList.innerHTML = drivers.map((d) => \`
+            <div class="ride-item">
+              <div class="ride-top">
+                <strong>\${escapeHtml(d.name)} (\${escapeHtml(d.phone)})</strong>
+                <span class="\${statusClass(d.status)}">\${statusLabel(d.status)}</span>
+              </div>
+              <div class="ride-meta">
+                ተሽከርካሪ፡ <strong>\${escapeHtml(d.vehicleType)}</strong> | ሰሌዳ፡ <strong>\${escapeHtml(d.plateNumber)}</strong>
+              </div>
+              <div>
+                <button class="btn btn-sm btn-secondary" type="button" onclick="updateDriverStatus('\${d._id}', 'approved')">አጽድቅ</button>
+                <button class="btn btn-sm btn-danger" type="button" onclick="deleteDriver('\${d._id}')">አጥፋ</button>
+              </div>
+            </div>
+          \`).join('');
+        }
+      } catch {
+        adminMsg.style.color = '#b91c1c';
+        adminMsg.textContent = 'ዝርዝሩን ሲጫን የኔትወርክ ስህተት አጋጥሟል።';
+      }
+    }
+
+    unlockBtn.addEventListener('click', () => {
+      adminPassword = passInput.value.trim();
+      if (!adminPassword) {
+        adminMsg.style.color = '#b91c1c';
+        adminMsg.textContent = 'እባክዎ የይለፍ ቃል ያስገቡ።';
+        return;
+      }
+      sessionStorage.setItem('guzo_admin_pass', adminPassword);
+      loadAdminData();
+    });
+
+    lockBtn.addEventListener('click', () => {
+      adminPassword = '';
+      passInput.value = '';
+      sessionStorage.removeItem('guzo_admin_pass');
+      lockBtn.style.display = 'none';
+      ridesList.innerHTML = '';
+      driversList.innerHTML = '';
+      adminMsg.style.color = '#4b5563';
+      adminMsg.textContent = 'ተቆልፏል። እንደገና ለማየት የይለፍ ቃል ያስገቡ።';
+    });
+
+    window.updateStatus = async function(id, status) {
+      try {
+        const res = await fetch('/api/rides/' + encodeURIComponent(id), {
+          method: 'PATCH',
+          headers: adminHeaders({ 'Content-Type': 'application/json' }),
+          body: JSON.stringify({ status }),
+        });
+        if (res.ok) loadAdminData();
+      } catch {}
+    };
+
+    window.deleteRide = async function(id) {
+      try {
+        const res = await fetch('/api/rides/' + encodeURIComponent(id), {
+          method: 'DELETE',
+          headers: adminHeaders(),
+        });
+        if (res.ok) loadAdminData();
+      } catch {}
+    };
+
+    window.updateDriverStatus = async function(id, status) {
+      try {
+        const res = await fetch('/api/drivers/' + encodeURIComponent(id), {
+          method: 'PATCH',
+          headers: adminHeaders({ 'Content-Type': 'application/json' }),
+          body: JSON.stringify({ status }),
+        });
+        if (res.ok) loadAdminData();
+      } catch {}
+    };
+
+    window.deleteDriver = async function(id) {
+      try {
+        const res = await fetch('/api/drivers/' + encodeURIComponent(id), {
+          method: 'DELETE',
+          headers: adminHeaders(),
+        });
+        if (res.ok) loadAdminData();
+      } catch {}
+    };
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      msg.style.color = '#1f2937';
+      msg.textContent = 'እየተላከ ነው...';
+
+      const payload = {
+        name: document.getElementById('name').value.trim(),
+        phone: document.getElementById('phone').value.trim(),
+        pickup: document.getElementById('pickup').value.trim(),
+        dropoff: document.getElementById('dropoff').value.trim(),
+      };
+
+      try {
+        const res = await fetch('/api/rides', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          msg.style.color = '#b91c1c';
+          msg.textContent = data.error || 'መላክ አልተቻለም።';
+          return;
+        }
+        msg.style.color = '#15803d';
+        msg.textContent = 'የጉዞ ጥያቄዎ በተሳካ ሁኔታ ተመዝግቧል!';
+        form.reset();
+        if (adminPassword) loadAdminData();
+      } catch {
+        msg.style.color = '#b91c1c';
+        msg.textContent = 'የኔትወርክ ስህተት አጋጥሟል።';
+      }
+    });
+
+    driverForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      driverMsg.style.color = '#1f2937';
+      driverMsg.textContent = 'እየተመዘገበ ነው...';
+
+      const payload = {
+        name: document.getElementById('driverName').value.trim(),
+        phone: document.getElementById('driverPhone').value.trim(),
+        vehicleType: document.getElementById('vehicleType').value.trim(),
+        plateNumber: document.getElementById('plateNumber').value.trim(),
+      };
+
+      try {
+        const res = await fetch('/api/drivers', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          driverMsg.style.color = '#b91c1c';
+          driverMsg.textContent = data.error || 'መመዝገብ አልተቻለም።';
+          return;
+        }
+        driverMsg.style.color = '#15803d';
+        driverMsg.textContent = 'የአሽከርካሪ ምዝገባዎ በተሳካ ሁኔታ ተልኳል! በቅርቡ ይገመገማል።';
+        driverForm.reset();
+        if (adminPassword) loadAdminData();
+      } catch {
+        driverMsg.style.color = '#b91c1c';
+        driverMsg.textContent = 'የኔትወርክ ስህተት አጋጥሟል።';
+      }
+    });
+
+    loadAdminData();
+  </script>
+</body>
+</html>`;
+
+const server = http.createServer(async (req, res) => {
+  const cleanUrl = (req.url || '/').split('?')[0];
+
+  if (req.method === 'GET') {
+    const rootFile = cleanUrl.replace(/^\/+/, '');
+    if (allowedRootImages.has(rootFile)) {
+      const filePath = path.join(__dirname, rootFile);
+      if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
+        res.writeHead(200, { 'Content-Type': 'image/jpeg' });
+        return fs.createReadStream(filePath).pipe(res);
+      }
+    }
+
+    if (cleanUrl.startsWith('/public/')) {
+      const safeRel = path.normalize(cleanUrl.replace(/^\/public\//, ''));
+      if (safeRel.startsWith('..')) {
+        res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' });
+        return res.end('Forbidden');
+      }
+      const filePath = path.join(__dirname, 'public', safeRel);
+      if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
+        const ext = path.extname(filePath).toLowerCase();
+        const mimeTypes = {
+          '.jpg': 'image/jpeg',
+          '.jpeg': 'image/jpeg',
+          '.png': 'image/png',
+          '.webp': 'image/webp',
+        };
+        res.writeHead(200, { 'Content-Type': mimeTypes[ext] || 'application/octet-stream' });
+        return fs.createReadStream(filePath).pipe(res);
+      }
+      res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+      return res.end('Image not found');
+    }
+  }
+
+  if (cleanUrl === '/health/db' && req.method === 'GET') {
+    return sendJson(res, 200, { status: dbStatus });
+  }
+
+  if (cleanUrl === '/api/rides' && req.method === 'GET') {
+    if (!isAdminAuthorized(req)) {
+      return sendJson(res, 401, { error: 'ያልተፈቀደ (Unauthorized) — ትክክለኛ የይለፍ ቃል ያስገቡ።' });
+    }
+    if (!db) return sendJson(res, 503, { error: 'Database not connected' });
+    const rides = await db.collection('rides').find().sort({ createdAt: -1 }).limit(50).toArray();
+    return sendJson(res, 200, { rides });
+  }
+
+  if (cleanUrl === '/api/rides' && req.method === 'POST') {
+    if (!db) return sendJson(res, 503, { error: 'Database not connected' });
+    try {
+      const body = await readJsonBody(req);
+      const name = (body.name || '').trim();
+      const phone = (body.phone || '').trim();
+      const pickup = (body.pickup || '').trim();
+      const dropoff = (body.dropoff || '').trim();
+
+      if (!name || !phone || !pickup || !dropoff) {
+        return sendJson(res, 400, { error: 'ሁሉንም ባዶ ቦታዎች ይሙሉ።' });
+      }
+
+      const doc = {
+        name,
+        phone,
+        pickup,
+        dropoff,
+        status: 'pending',
+        createdAt: new Date(),
+      };
+
+      const result = await db.collection('rides').insertOne(doc);
+      await sendTelegramNotification(doc);
+      return sendJson(res, 201, { ok: true, id: result.insertedId, ride: doc });
+    } catch (err) {
+      return sendJson(res, 400, { error: err.message || 'Invalid request' });
+    }
+  }
+
+  const rideIdMatch = cleanUrl.match(/^\/api\/rides\/([a-fA-F0-9]{24})$/);
+  if (rideIdMatch) {
+    if (!isAdminAuthorized(req)) {
+      return sendJson(res, 401, { error: 'ያልተፈቀደ (Unauthorized) — ትክክለኛ የይለፍ ቃል ያስገቡ።' });
+    }
+    if (!db) return sendJson(res, 503, { error: 'Database not connected' });
+    const _id = new ObjectId(rideIdMatch[1]);
+
+    if (req.method === 'PATCH') {
+      try {
+        const body = await readJsonBody(req);
+        const allowed = ['pending', 'accepted', 'completed'];
+        if (!allowed.includes(body.status)) {
+          return sendJson(res, 400, { error: 'ልክ ያልሆነ ሁኔታ (status)' });
+        }
+        const result = await db.collection('rides').updateOne(
+          { _id },
+          { $set: { status: body.status, updatedAt: new Date() } }
+        );
+        if (!result.matchedCount) return sendJson(res, 404, { error: 'ጥያቄው አልተገኘም' });
+        return sendJson(res, 200, { ok: true, status: body.status });
+      } catch (err) {
+        return sendJson(res, 400, { error: err.message || 'Invalid request' });
+      }
+    }
+
+    if (req.method === 'DELETE') {
+      const result = await db.collection('rides').deleteOne({ _id });
+      if (!result.deletedCount) return sendJson(res, 404, { error: 'ጥያቄው አልተገኘም' });
+      return sendJson(res, 200, { ok: true });
+    }
+  }
+
+  if (cleanUrl === '/api/drivers' && req.method === 'GET') {
+    if (!isAdminAuthorized(req)) {
+      return sendJson(res, 401, { error: 'ያልተፈቀደ (Unauthorized) — ትክክለኛ የይለፍ ቃል ያስገቡ።' });
+    }
+    if (!db) return sendJson(res, 503, { error: 'Database not connected' });
+    const drivers = await db.collection('drivers').find().sort({ createdAt: -1 }).limit(50).toArray();
+    return sendJson(res, 200, { drivers });
+  }
+
+  if (cleanUrl === '/api/drivers' && req.method === 'POST') {
+    if (!db) return sendJson(res, 503, { error: 'Database not connected' });
+    try {
+      const body = await readJsonBody(req);
+      const name = (body.name || '').trim();
+      const phone = (body.phone || '').trim();
+      const vehicleType = (body.vehicleType || '').trim();
+      const plateNumber = (body.plateNumber || '').trim();
+
+      if (!name || !phone || !vehicleType || !plateNumber) {
+        return sendJson(res, 400, { error: 'ሁሉንም የአሽከርካሪ መረጃዎች ይሙሉ።' });
+      }
+
+      const doc = {
+        name,
+        phone,
+        vehicleType,
+        plateNumber,
+        status: 'pending',
+        createdAt: new Date(),
+      };
+
+      const result = await db.collection('drivers').insertOne(doc);
+      await sendDriverNotification(doc);
+      return sendJson(res, 201, { ok: true, id: result.insertedId, driver: doc });
+    } catch (err) {
+      return sendJson(res, 400, { error: err.message || 'Invalid request' });
+    }
+  }
+
+  const driverIdMatch = cleanUrl.match(/^\/api\/drivers\/([a-fA-F0-9]{24})$/);
+  if (driverIdMatch) {
+    if (!isAdminAuthorized(req)) {
+      return sendJson(res, 401, { error: 'ያልተፈቀደ (Unauthorized) — ትክክለኛ የይለፍ ቃል ያስገቡ።' });
+    }
+    if (!db) return sendJson(res, 503, { error: 'Database not connected' });
+    const _id = new ObjectId(driverIdMatch[1]);
+
+    if (req.method === 'PATCH') {
+      try {
+        const body = await readJsonBody(req);
+        const allowed = ['pending', 'approved'];
+        if (!allowed.includes(body.status)) {
+          return sendJson(res, 400, { error: 'ልክ ያልሆነ ሁኔታ (status)' });
+        }
+        const result = await db.collection('drivers').updateOne(
+          { _id },
+          { $set: { status: body.status, updatedAt: new Date() } }
+        );
+        if (!result.matchedCount) return sendJson(res, 404, { error: 'አሽከርካሪው አልተገኘም' });
+        return sendJson(res, 200, { ok: true, status: body.status });
+      } catch (err) {
+        return sendJson(res, 400, { error: err.message || 'Invalid request' });
+      }
+    }
+
+    if (req.method === 'DELETE') {
+      const result = await db.collection('drivers').deleteOne({ _id });
+      if (!result.deletedCount) return sendJson(res, 404, { error: 'አሽከርካሪው አልተገኘም' });
+      return sendJson(res, 200, { ok: true });
+    }
+  }
+
+  res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+  res.end(htmlPage);
+});
+
+server.listen(PORT, async () => {
+  console.log(`Guzo Plus server running on port ${PORT}`);
+  await connectAtlas();
   pollTelegramUpdates();
 });
