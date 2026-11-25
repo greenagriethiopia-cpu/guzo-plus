@@ -405,6 +405,48 @@ app.get('/admin', (req, res) => {
       '</script></body></html>'
   );
 });
+app.get('/driver', (req, res) => {
+  res.type('html').send(
+    '<!DOCTYPE html><html lang="am"><head><meta charset="UTF-8" />' +
+      '<meta name="viewport" content="width=device-width, initial-scale=1.0" />' +
+      '<title>ጉዞ ፕላስ | የሾፌር መመዝገቢያ</title>' +
+      '<style>*{box-sizing:border-box;font-family:system-ui,-apple-system,sans-serif}' +
+      'body{margin:0;background:#e2e8f0;color:#0f172a}' +
+      '.wrap{max-width:560px;margin:0 auto;padding:12px 14px 28px}' +
+      'h1{margin:6px 0 12px;font-size:1.45rem;color:#0f172a}' +
+      '.nav{display:flex;gap:12px;margin-bottom:12px;font-size:0.95rem}' +
+      '.nav a{color:#1d4ed8;font-weight:600;text-decoration:underline}' +
+      '.card{background:#fff;border:1px solid #cbd5e1;border-radius:10px;padding:14px;margin-bottom:12px}' +
+      'label{display:block;font-size:0.88rem;font-weight:600;margin-top:10px;margin-bottom:4px}' +
+      'input,select{width:100%;padding:10px 12px;border-radius:7px;border:1px solid #94a3b8;background:#fff}' +
+      '.btn{margin-top:14px;width:100%;padding:12px;border:none;border-radius:8px;background:#15803d;color:#fff;font-weight:700;font-size:1rem;cursor:pointer}' +
+      '#dMsg{margin-top:10px;font-weight:600;min-height:20px}' +
+      '.item{border-top:1px solid #e2e8f0;padding:8px 0;font-size:0.88rem}' +
+      '.item:first-child{border-top:none}</style></head><body>' +
+      '<div class="wrap"><h1>ጉዞ ፕላስ - የሾፌር መመዝገቢያ</h1>' +
+      '<div class="nav"><a href="/">ጉዞ</a><a href="/driver">አሽከርካሪ</a><a href="/admin">አስተዳደር</a></div>' +
+      '<div class="card"><h2 style="margin:0 0 8px;font-size:1.1rem">አዲስ አሽከርካሪ ይመዝገቡ</h2>' +
+      '<form id="driverForm">' +
+      '<label for="fullName">ሙሉ ስም</label><input id="fullName" required placeholder="የሾፌሩ ሙሉ ስም" />' +
+      '<label for="phone">ስልክ ቁጥር</label><input id="phone" type="tel" required placeholder="09..." />' +
+      '<label for="vehicleType">የተሽከርካሪ ዓይነት</label>' +
+      '<select id="vehicleType"><option value="ባጃጅ (Bajaj)">ባጃጅ (Bajaj)</option><option value="መኪና (Sedan)">መኪና (Sedan)</option><option value="ሚኒባስ (Minibus)">ሚኒባስ (Minibus)</option></select>' +
+      '<label for="plateNumber">ሰሌዳ ቁጥር</label><input id="plateNumber" placeholder="ለምሳሌ፡ AA-..." />' +
+      '<label for="area">የሚሰሩበት አካባቢ</label><input id="area" placeholder="ለምሳሌ፡ ጎተራ፣ ቦሌ፣ ሳሪስ" />' +
+      '<button class="btn" type="submit">አሽከርካሪ መዝግብ</button></form><div id="dMsg"></div></div>' +
+      '<div class="card"><h3 style="margin:0 0 8px">የተመዘገቡ አሽከርካሪዎች</h3><div id="driversList">በመጫን ላይ...</div></div></div>' +
+      '<script>' +
+      'const dForm=document.getElementById("driverForm"),dMsg=document.getElementById("dMsg"),dList=document.getElementById("driversList");' +
+      'async function loadDrivers(){try{const r=await fetch("/api/drivers");const list=await r.json();' +
+      'if(!Array.isArray(list)||!list.length){dList.textContent="ገና የተመዘገበ አሽከርካሪ የለም።";return;}' +
+      'dList.innerHTML=list.slice(0,10).map(d=>"<div class=\\"item\\"><strong>"+d.fullName+"</strong> ("+d.phone+") — "+d.vehicleType+" | "+(d.area||"-")+"</div>").join("");}catch(_){dList.textContent="ዝርዝር ማምጣት አልተቻለም።";}}' +
+      'dForm.addEventListener("submit",async(e)=>{e.preventDefault();dMsg.style.color="#15803d";dMsg.textContent="በመመዝገብ ላይ...";' +
+      'const payload={fullName:document.getElementById("fullName").value.trim(),phone:document.getElementById("phone").value.trim(),vehicleType:document.getElementById("vehicleType").value,plateNumber:document.getElementById("plateNumber").value.trim(),area:document.getElementById("area").value.trim()};' +
+      'try{const r=await fetch("/api/drivers",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});' +
+      'if(r.ok){dMsg.style.color="#15803d";dMsg.textContent="✅ አሽከርካሪው በስኬት ተመዝግቧል።";dForm.reset();loadDrivers();}else{const err=await r.json();dMsg.style.color="#dc2626";dMsg.textContent="❌ "+(err.error||"ስህተት");}}catch(err){dMsg.style.color="#dc2626";dMsg.textContent="❌ "+err.message;}});' +
+      'loadDrivers();</script></body></html>'
+  );
+});
 
 process.on('uncaughtException', (err) => {
   console.error('Uncaught Exception:', err);
