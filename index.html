@@ -1,1 +1,126 @@
 
+<!DOCTYPE html>
+<html lang="am">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ጉዞ ፕላስ (Guzo Plus)</title>
+  <link rel="manifest" href="https://guzo-plus-05wo.onrender.com/manifest.json" />
+  <meta name="theme-color" content="#15803d" />
+  <style>
+    * { box-sizing: border-box; font-family: system-ui, -apple-system, sans-serif; }
+    body {
+      margin: 0;
+      background: #f1f5f9;
+      color: #0f172a;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      padding: 16px;
+    }
+    .container {
+      max-width: 440px;
+      width: 100%;
+      margin: 0 auto;
+    }
+    .banner {
+      background: #15803d;
+      color: #ffffff;
+      border-radius: 14px;
+      padding: 20px 16px;
+      text-align: center;
+      box-shadow: 0 4px 12px rgba(21, 128, 61, 0.2);
+      margin-bottom: 16px;
+    }
+    .banner h1 {
+      margin: 0 0 6px;
+      font-size: 1.5rem;
+      font-weight: 800;
+    }
+    .banner p {
+      margin: 0;
+      font-size: 0.92rem;
+      opacity: 0.95;
+    }
+    .card {
+      background: #ffffff;
+      border-radius: 14px;
+      padding: 20px 16px;
+      box-shadow: 0 2px 10px rgba(15, 23, 42, 0.08);
+      text-align: center;
+    }
+    .card h2 {
+      margin: 0 0 16px;
+      font-size: 1.15rem;
+      font-weight: 700;
+      color: #0f172a;
+    }
+    .role-btn {
+      display: block;
+      width: 100%;
+      padding: 14px 16px;
+      border-radius: 10px;
+      text-decoration: none;
+      font-weight: 700;
+      font-size: 1rem;
+      margin-bottom: 12px;
+      transition: opacity 0.15s ease;
+    }
+    .role-btn:hover { opacity: 0.92; }
+    .btn-passenger {
+      background: #15803d;
+      color: #ffffff;
+    }
+    .btn-driver {
+      background: #2563eb;
+      color: #ffffff;
+      margin-bottom: 0;
+    }
+    .sub-links {
+      margin-top: 14px;
+      font-size: 0.85rem;
+      display: flex;
+      justify-content: center;
+      gap: 16px;
+    }
+    .sub-links a {
+      color: #475569;
+      text-decoration: underline;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="banner">
+      <h1>🚗 ጉዞ ፕላስ (Guzo Plus)</h1>
+      <p>ፈጣን እና አስተማማኝ የትራንስፖርት አገልግሎት</p>
+    </div>
+
+    <div class="card">
+      <h2>ሚናዎን ይምረጡ</h2>
+
+      <a class="role-btn btn-passenger" href="https://guzo-plus-05wo.onrender.com/">
+        👤 ተሳፋሪ (Passenger)
+      </a>
+
+      <a class="role-btn btn-driver" href="https://guzo-plus-05wo.onrender.com/driver">
+        🚗 ሾፌር (Driver)
+      </a>
+
+      <div class="sub-links">
+        <a href="tel:0923579382">📞 ይደውሉ: 0923579382</a>
+        <a href="https://guzo-plus-05wo.onrender.com/admin">አስተዳደር</a>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", () => {
+        navigator.serviceWorker.register("https://guzo-plus-05wo.onrender.com/sw.js").catch(() => {});
+      });
+    }
+  </script>
+</body>
+</html>
