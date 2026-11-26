@@ -518,9 +518,9 @@ const htmlPage = `<!DOCTYPE html>
       </form>
       <div id="msg"></div>
     </section>
-<div id="admin-status" class="status-banner" role="status"></div>
 
-<div id="rides-list"></div>
+
+
 
     <section id="driver-register" class="card">
       <h2>የአሽከርካሪ ምዝገባ (Driver Registration)</h2>
@@ -564,12 +564,13 @@ const htmlPage = `<!DOCTYPE html>
       <h3>የተመዘገቡ አሽከርካሪዎች</h3>
       <div id="driversList"></div>
     </section>
-
-    <div class="footer">
+<div id="admin-status" class="status-banner" role="status"></div>
+  <div id="rides-list"></div>
+  <div class="footer">
       © 2026 Guzo Plus (ጉዞ ፕላስ) — https://guzo-plus-05wo.onrender.com/
     </div>
   </main>
-let driversCache = [];
+
 
 function showAdminStatus(message, isError = false) {
   const banner = document.getElementById("admin-status");
