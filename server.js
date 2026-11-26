@@ -518,6 +518,9 @@ const htmlPage = `<!DOCTYPE html>
       </form>
       <div id="msg"></div>
     </section>
+<div id="admin-status" class="status-banner" role="status"></div>
+
+<div id="rides-list"></div>
 
     <section id="driver-register" class="card">
       <h2>የአሽከርካሪ ምዝገባ (Driver Registration)</h2>
