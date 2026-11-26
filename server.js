@@ -569,6 +569,125 @@ const htmlPage = `<!DOCTYPE html>
       © 2026 Guzo Plus (ጉዞ ፕላስ) — https://guzo-plus-05wo.onrender.com/
     </div>
   </main>
+let driversCache = [];
+
+function showAdminStatus(message, isError = false) {
+  const banner = document.getElementById("admin-status");
+  if (!banner) return;
+  banner.textContent = message;
+  banner.className = isError
+    ? "status-banner status-error"
+    : "status-banner status-success";
+}
+
+async function loadDrivers() {
+  const res = await fetch("/api/drivers");
+  if (!res.ok) throw new Error("የአሽከርካሪዎችን ዝርዝር ማምጣት አልተቻለም");
+  const data = await res.json();
+  driversCache = Array.isArray(data) ? data : (data.drivers || []);
+}
+
+function buildDriverOptions(selectedDriverId) {
+  if (!driversCache.length) {
+    return `<option value="">የተመዘገበ ሾፌር የለም</option>`;
+  }
+  const placeholder = `<option value="">-- ሾፌር ይምረጡ --</option>`;
+  const options = driversCache.map((driver) => {
+    const id = driver._id || driver.id;
+    const name = driver.fullName || driver.name || "ስም የለም";
+    const vehicle = driver.vehicleType || driver.vehicle || "";
+    const plate = driver.plateNumber || driver.plate || "";
+    const label = [name, vehicle, plate].filter(Boolean).join(" • ");
+    const selected = String(id) === String(selectedDriverId) ? "selected" : "";
+    return `<option value="${id}" ${selected}>${label}</option>`;
+  });
+  return placeholder + options.join("");
+}
+
+async function assignDriver(rideId, selectEl, btnEl) {
+  const driverId = selectEl.value;
+  if (!driverId) {
+    showAdminStatus("እባክዎ መጀመሪያ አሽከርካሪ ይምረጡ።", true);
+    return;
+  }
+
+  const originalText = btnEl.textContent;
+  btnEl.disabled = true;
+  btnEl.textContent = "እየተመደበ ነው...";
+
+  try {
+    const res = await fetch(`/api/rides/${encodeURIComponent(rideId)}/assign-driver`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ driverId })
+    });
+    const result = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(result.message || "ሾፌር መመደብ አልተሳካም");
+    }
+    showAdminStatus("አሽከርካሪው በስኬት ተመድቧል።");
+    await renderRidesWithDrivers();
+  } catch (err) {
+    showAdminStatus(err.message || "ስህተት ተፈጥሯል", true);
+  } finally {
+    btnEl.disabled = false;
+    btnEl.textContent = originalText;
+  }
+}
+
+async function renderRidesWithDrivers() {
+  const container = document.getElementById("rides-list");
+  if (!container) return;
+
+  await loadDrivers();
+  const res = await fetch("/api/rides");
+  if (!res.ok) {
+    showAdminStatus("የጉዞ ጥያቄዎችን ማምጣት አልተቻለም", true);
+    return;
+  }
+  const data = await res.json();
+  const rides = Array.isArray(data) ? data : (data.rides || []);
+
+  if (!rides.length) {
+    container.innerHTML = `<p>ምንም የጉዞ ጥያቄ አልተገኘም።</p>`;
+    return;
+  }
+
+  container.innerHTML = "";
+  rides.forEach((ride) => {
+    const rideId = ride._id || ride.id;
+    const passenger = ride.fullName || ride.passengerName || "ተሳፋሪ";
+    const phone = ride.phone || "";
+    const pickup = ride.pickup || "";
+    const dropoff = ride.dropoff || "";
+    const assignedName = ride.assignedDriverName || (ride.driver && ride.driver.name) || "አልተመደበም";
+
+    const card = document.createElement("div");
+    card.className = "card";
+    card.style.marginBottom = "12px";
+    card.style.textAlign = "left";
+
+    card.innerHTML = `
+      <div><strong>${passenger}</strong> ${phone ? `(${phone})` : ""}</div>
+      <div>መነሻ፦ ${pickup} → መድረሻ፦ ${dropoff}</div>
+      <div>የተመደበ ሾፌር፦ <span class="assigned-label">${assignedName}</span></div>
+      <div style="margin-top: 8px; display: flex; gap: 8px; flex-wrap: wrap;">
+        <select class="driver-select" style="flex: 1; padding: 8px; border-radius: 8px;">
+          ${buildDriverOptions(ride.driverId || (ride.driver && (ride.driver._id || ride.driver.id)))}
+        </select>
+        <button type="button" class="role-btn btn-passenger assign-btn" style="width: auto; margin: 0; padding: 8px 14px;">
+          መድብ
+        </button>
+      </div>
+    `;
+
+    const selectEl = card.querySelector(".driver-select");
+    const btnEl = card.querySelector(".assign-btn");
+    btnEl.addEventListener("click", () => assignDriver(rideId, selectEl, btnEl));
+
+    container.appendChild(card);
+  });
+}
 
   <script>
     const form = document.getElementById('rideForm');
