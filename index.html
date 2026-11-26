@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="am">
 <head>
@@ -51,10 +50,32 @@
       text-align: center;
     }
     .card h2 {
-      margin: 0 0 16px;
+      margin: 0 0 14px;
       font-size: 1.15rem;
       font-weight: 700;
       color: #0f172a;
+    }
+    .status-banner {
+      display: none;
+      padding: 11px 13px;
+      border-radius: 9px;
+      margin-bottom: 14px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      line-height: 1.4;
+      text-align: left;
+    }
+    .status-success {
+      display: block;
+      background: #dcfce7;
+      color: #166534;
+      border: 1px solid #86efac;
+    }
+    .status-error {
+      display: block;
+      background: #fee2e2;
+      color: #991b1b;
+      border: 1px solid #fca5a5;
     }
     .role-btn {
       display: block;
@@ -98,29 +119,3 @@
     </div>
 
     <div class="card">
-      <h2>ሚናዎን ይምረጡ</h2>
-
-      <a class="role-btn btn-passenger" href="https://guzo-plus-05wo.onrender.com/">
-        👤 ተሳፋሪ (Passenger)
-      </a>
-
-      <a class="role-btn btn-driver" href="https://guzo-plus-05wo.onrender.com/driver">
-        🚗 ሾፌር (Driver)
-      </a>
-
-      <div class="sub-links">
-        <a href="tel:0923579382">📞 ይደውሉ: 0923579382</a>
-        <a href="https://guzo-plus-05wo.onrender.com/admin">አስተዳደር</a>
-      </div>
-    </div>
-  </div>
-
-  <script>
-    if ("serviceWorker" in navigator) {
-      window.addEventListener("load", () => {
-        navigator.serviceWorker.register("https://guzo-plus-05wo.onrender.com/sw.js").catch(() => {});
-      });
-    }
-  </script>
-</body>
-</html>
