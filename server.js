@@ -7,7 +7,7 @@ const { MongoClient, ObjectId } = require("mongodb");
 const app = express();
 const PORT = process.env.PORT || 3000;
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "admin123";
-const MONGODB_URI = process.env.MONGODB_URI || "";
+const MONGODB_URI = process.env.MONGODB_URI || process.env.MONGO_URI || "";
 const DB_NAME = process.env.MONGODB_DB || "guzo_plus";
 const DATA_FILE = process.env.DATA_FILE || "/tmp/guzo-plus-data.json";
 
@@ -68,11 +68,16 @@ function buildObjectIdFilter(id) {
 
 async function initDatabase() {
   if (!MONGODB_URI) {
-    console.log("MONGODB_URI not set; using local JSON store:", DATA_FILE);
+    console.log("MONGODB_URI / MONGO_URI not set; using local JSON store:", DATA_FILE);
     return;
   }
   try {
-    const client = new MongoClient(MONGODB_URI);
+    const client = new MongoClient(MONGODB_URI, {
+      family: 4,
+      serverSelectionTimeoutMS: 30000,
+      connectTimeoutMS: 45000,
+      socketTimeoutMS: 45000
+    });
     await client.connect();
     db = client.db(DB_NAME);
     ridesCol = db.collection("rides");
@@ -353,11 +358,9 @@ app.get(["/", "/admin", "/index.html"], (req, res) => {
     return res.sendFile(existing);
   }
   res.status(404).send("index.html not found");
+});
 
-const  = 
-
-initDatabase().then(() => {
-  app.listen(PORT, () => {
-    console.log(`Guzo Plus server listening on port ${PORT}`);
-  });
+app.listen(PORT, () => {
+  console.log(`Guzo Plus server listening on port ${PORT}`);
+  initDatabase();
 });
