@@ -34,8 +34,8 @@
       background: var(--card);
       border: 1px solid var(--border);
       border-radius: 14px;
-      padding: 20px;
-      margin-bottom: 16px;
+      padding: 18px;
+      margin-bottom: 14px;
       text-align: center;
     }
     .badge {
@@ -46,12 +46,12 @@
       padding: 4px 12px;
       border-radius: 999px;
       font-size: 13px;
-      margin-bottom: 10px;
+      margin-bottom: 8px;
     }
     h1 {
-      margin: 6px 0 10px;
+      margin: 4px 0 8px;
       color: var(--green);
-      font-size: 26px;
+      font-size: 24px;
     }
     h2 {
       margin: 0 0 14px;
@@ -62,12 +62,41 @@
       margin: 18px 0 8px;
       font-size: 16px;
     }
+    .role-tabs {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+    .tab-btn {
+      padding: 11px 8px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: var(--card);
+      color: var(--text);
+      font-weight: 700;
+      font-size: 14px;
+      cursor: pointer;
+    }
+    .tab-btn.active {
+      background: var(--green);
+      color: #fff;
+      border-color: var(--green);
+    }
+    .tab-btn.driver-tab.active {
+      background: var(--blue);
+      border-color: var(--blue);
+    }
     .card {
       background: var(--card);
       border: 1px solid var(--border);
       border-radius: 14px;
       padding: 18px;
       margin-bottom: 16px;
+      display: none;
+    }
+    .card.active-panel {
+      display: block;
     }
     .field {
       margin-bottom: 12px;
@@ -163,20 +192,32 @@
   <div class="wrap">
     <section class="hero">
       <div class="badge">ጉዞ ፕላስ • Guzo Plus</div>
-      <h1>ፈጣን እና አስተማማኝ የጉዞ አገልግሎት</h1>
-      <p class="muted">በአዲስ አበባ እና በዙሪያዋ ቀላል የጉዞ ጥያቄ፣ የአሽከርካሪ ምዝገባ እና የአስተዳደር ቁጥጥር።</p>
+      <h1>የተሳፋሪ እና የሾፌር አገልግሎት</h1>
+      <p class="muted">ለተሳፋሪ የተለየ የጉዞ ጥያቄ ቅጽ እና ለሾፌር የተለየ የምዝገባ ቅጽ።</p>
     </section>
 
-    <section id="book" class="card">
-      <h2>የጉዞ ጥያቄ ያስገቡ (Request a Ride)</h2>
+    <nav class="role-tabs" aria-label="የአገልግሎት ምርጫ">
+      <button type="button" id="tabPassenger" class="tab-btn active" data-target="panel-passenger">
+        ተሳፋሪ (ጉዞ)
+      </button>
+      <button type="button" id="tabDriver" class="tab-btn driver-tab" data-target="panel-driver">
+        ሾፌር (ምዝገባ)
+      </button>
+      <button type="button" id="tabAdmin" class="tab-btn" data-target="panel-admin">
+        አስተዳደር
+      </button>
+    </nav>
+
+    <section id="panel-passenger" class="card active-panel">
+      <h2>የተሳፋሪ የጉዞ ጥያቄ (Passenger Ride Request)</h2>
       <div id="rideBanner" class="status-banner" role="status"></div>
       <form id="rideForm">
         <div class="field">
-          <label for="rideName">ሙሉ ስም</label>
+          <label for="rideName">የተሳፋሪ ሙሉ ስም</label>
           <input id="rideName" name="fullName" type="text" required placeholder="ለምሳሌ፡ አበበ ከበደ" />
         </div>
         <div class="field">
-          <label for="ridePhone">ስልክ ቁጥር</label>
+          <label for="ridePhone">የተሳፋሪ ስልክ ቁጥር</label>
           <input id="ridePhone" name="phone" type="tel" required placeholder="09..." />
         </div>
         <div class="field">
@@ -191,8 +232,8 @@
       </form>
     </section>
 
-    <section id="driver-register" class="card">
-      <h2>የአሽከርካሪ ምዝገባ (Driver Registration)</h2>
+    <section id="panel-driver" class="card">
+      <h2>የአሽከርካሪ ምዝገባ ቅጽ (Driver Registration)</h2>
       <div id="driverBanner" class="status-banner" role="status"></div>
       <form id="driverForm">
         <div class="field">
@@ -200,7 +241,7 @@
           <input id="driverName" name="driverName" type="text" required placeholder="ለምሳሌ፡ ታደሰ በቀለ" />
         </div>
         <div class="field">
-          <label for="driverPhone">ስልክ ቁጥር</label>
+          <label for="driverPhone">የአሽከርካሪ ስልክ ቁጥር</label>
           <input id="driverPhone" name="driverPhone" type="tel" required placeholder="09..." />
         </div>
         <div class="field">
@@ -230,7 +271,7 @@
       </form>
     </section>
 
-    <section id="admin" class="card">
+    <section id="panel-admin" class="card">
       <h2>የአስተዳደር ክፍል — የይለፍ ቃል ያስገቡ</h2>
       <div id="admin-status" class="status-banner" role="status"></div>
       <form id="adminLoginForm" class="assign-row" style="margin-bottom: 14px;">
@@ -239,7 +280,7 @@
       </form>
 
       <div id="adminPanel" style="display:none;">
-        <h3>የጉዞ ጥያቄዎች</h3>
+        <h3>የተሳፋሪ የጉዞ ጥያቄዎች</h3>
         <div id="rides-list"></div>
 
         <h3>የተመዘገቡ አሽከርካሪዎች</h3>
@@ -256,6 +297,19 @@
     let driversCache = [];
     let compressedPhotoData = "";
     let adminUnlocked = false;
+
+    function switchTab(targetId) {
+      document.querySelectorAll(".tab-btn").forEach((btn) => {
+        btn.classList.toggle("active", btn.dataset.target === targetId);
+      });
+      document.querySelectorAll(".card").forEach((panel) => {
+        panel.classList.toggle("active-panel", panel.id === targetId);
+      });
+    }
+
+    document.querySelectorAll(".tab-btn").forEach((btn) => {
+      btn.addEventListener("click", () => switchTab(btn.dataset.target));
+    });
 
     function setBanner(id, message, isError = false) {
       const el = document.getElementById(id);
