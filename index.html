@@ -3,119 +3,517 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>ጉዞ ፕላስ (Guzo Plus)</title>
-  <link rel="manifest" href="https://guzo-plus-05wo.onrender.com/manifest.json" />
-  <meta name="theme-color" content="#15803d" />
+  <meta name="theme-color" content="#1b7f4b" />
+  <title>ጉዞ ፕላስ • Guzo Plus</title>
+  <link rel="manifest" href="/manifest.json" />
   <style>
-    * { box-sizing: border-box; font-family: system-ui, -apple-system, sans-serif; }
+    :root {
+      --green: #1b7f4b;
+      --green-dark: #145c36;
+      --blue: #0b63b6;
+      --bg: #f4f7f5;
+      --card: #ffffff;
+      --text: #18221c;
+      --muted: #5b6860;
+      --border: #dce4df;
+    }
+    * { box-sizing: border-box; }
     body {
       margin: 0;
-      background: #f1f5f9;
-      color: #0f172a;
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+    }
+    .wrap {
+      max-width: 680px;
+      margin: 0 auto;
       padding: 16px;
     }
-    .container {
-      max-width: 440px;
-      width: 100%;
-      margin: 0 auto;
-    }
-    .banner {
-      background: #15803d;
-      color: #ffffff;
+    .hero {
+      background: var(--card);
+      border: 1px solid var(--border);
       border-radius: 14px;
-      padding: 20px 16px;
-      text-align: center;
-      box-shadow: 0 4px 12px rgba(21, 128, 61, 0.2);
+      padding: 20px;
       margin-bottom: 16px;
+      text-align: center;
     }
-    .banner h1 {
-      margin: 0 0 6px;
-      font-size: 1.5rem;
-      font-weight: 800;
+    .badge {
+      display: inline-block;
+      background: #e2f5ea;
+      color: var(--green-dark);
+      font-weight: 700;
+      padding: 4px 12px;
+      border-radius: 999px;
+      font-size: 13px;
+      margin-bottom: 10px;
     }
-    .banner p {
-      margin: 0;
-      font-size: 0.92rem;
-      opacity: 0.95;
+    h1 {
+      margin: 6px 0 10px;
+      color: var(--green);
+      font-size: 26px;
+    }
+    h2 {
+      margin: 0 0 14px;
+      font-size: 20px;
+      color: var(--green-dark);
+    }
+    h3 {
+      margin: 18px 0 8px;
+      font-size: 16px;
     }
     .card {
-      background: #ffffff;
+      background: var(--card);
+      border: 1px solid var(--border);
       border-radius: 14px;
-      padding: 20px 16px;
-      box-shadow: 0 2px 10px rgba(15, 23, 42, 0.08);
-      text-align: center;
+      padding: 18px;
+      margin-bottom: 16px;
     }
-    .card h2 {
-      margin: 0 0 14px;
-      font-size: 1.15rem;
+    .field {
+      margin-bottom: 12px;
+    }
+    label {
+      display: block;
+      font-weight: 600;
+      margin-bottom: 5px;
+      font-size: 14px;
+    }
+    input, select {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid #c5d1ca;
+      border-radius: 9px;
+      font-size: 15px;
+      background: #fff;
+    }
+    .btn {
+      width: 100%;
+      padding: 12px 16px;
+      border: none;
+      border-radius: 10px;
+      font-size: 15px;
       font-weight: 700;
-      color: #0f172a;
+      color: #fff;
+      background: var(--green);
+      cursor: pointer;
+    }
+    .btn:hover { background: var(--green-dark); }
+    .btn-blue { background: var(--blue); }
+    .btn-blue:hover { background: #084a88; }
+    .btn-sm {
+      width: auto;
+      padding: 8px 14px;
+      font-size: 14px;
     }
     .status-banner {
       display: none;
-      padding: 11px 13px;
-      border-radius: 9px;
-      margin-bottom: 14px;
-      font-size: 0.9rem;
+      padding: 11px 14px;
+      border-radius: 10px;
+      margin-bottom: 12px;
       font-weight: 600;
-      line-height: 1.4;
-      text-align: left;
+      font-size: 14px;
     }
+    .status-banner.show { display: block; }
     .status-success {
-      display: block;
-      background: #dcfce7;
-      color: #166534;
-      border: 1px solid #86efac;
+      background: #e2f5ea;
+      color: #115230;
+      border: 1px solid #9fd8b7;
     }
     .status-error {
-      display: block;
-      background: #fee2e2;
-      color: #991b1b;
-      border: 1px solid #fca5a5;
+      background: #fde8e8;
+      color: #8b1e1e;
+      border: 1px solid #f5b5b5;
     }
-    .role-btn {
-      display: block;
-      width: 100%;
-      padding: 14px 16px;
+    .item-box {
+      border: 1px solid var(--border);
       border-radius: 10px;
-      text-decoration: none;
-      font-weight: 700;
-      font-size: 1rem;
-      margin-bottom: 12px;
-      transition: opacity 0.15s ease;
+      padding: 12px;
+      margin-bottom: 10px;
+      background: #fafcfb;
     }
-    .role-btn:hover { opacity: 0.92; }
-    .btn-passenger {
-      background: #15803d;
-      color: #ffffff;
-    }
-    .btn-driver {
-      background: #2563eb;
-      color: #ffffff;
-      margin-bottom: 0;
-    }
-    .sub-links {
-      margin-top: 14px;
-      font-size: 0.85rem;
+    .assign-row {
       display: flex;
-      justify-content: center;
-      gap: 16px;
+      gap: 8px;
+      margin-top: 10px;
+      flex-wrap: wrap;
     }
-    .sub-links a {
-      color: #475569;
-      text-decoration: underline;
+    .assign-row select {
+      flex: 1;
+      min-width: 180px;
+    }
+    .driver-thumb {
+      width: 72px;
+      height: 72px;
+      object-fit: cover;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      margin-top: 8px;
+      display: block;
+    }
+    .muted { color: var(--muted); font-size: 13px; }
+    .footer {
+      text-align: center;
+      color: var(--muted);
+      font-size: 13px;
+      padding: 12px 0 24px;
     }
   </style>
 </head>
 <body>
-  <div class="container">
-    <div class="banner">
-      <h1>🚗 ጉዞ ፕላስ (Guzo Plus)</h1>
-      <p>ፈጣን እና አስተማማኝ የትራንስፖርት አገልግሎት</p>
-    </div>
+  <div class="wrap">
+    <section class="hero">
+      <div class="badge">ጉዞ ፕላስ • Guzo Plus</div>
+      <h1>ፈጣን እና አስተማማኝ የጉዞ አገልግሎት</h1>
+      <p class="muted">በአዲስ አበባ እና በዙሪያዋ ቀላል የጉዞ ጥያቄ፣ የአሽከርካሪ ምዝገባ እና የአስተዳደር ቁጥጥር።</p>
+    </section>
 
-    <div class="card">
+    <section id="book" class="card">
+      <h2>የጉዞ ጥያቄ ያስገቡ (Request a Ride)</h2>
+      <div id="rideBanner" class="status-banner" role="status"></div>
+      <form id="rideForm">
+        <div class="field">
+          <label for="rideName">ሙሉ ስም</label>
+          <input id="rideName" name="fullName" type="text" required placeholder="ለምሳሌ፡ አበበ ከበደ" />
+        </div>
+        <div class="field">
+          <label for="ridePhone">ስልክ ቁጥር</label>
+          <input id="ridePhone" name="phone" type="tel" required placeholder="09..." />
+        </div>
+        <div class="field">
+          <label for="ridePickup">መነሻ ቦታ (Pickup)</label>
+          <input id="ridePickup" name="pickup" type="text" required placeholder="ለምሳሌ፡ ጎተራ" />
+        </div>
+        <div class="field">
+          <label for="rideDropoff">መድረሻ ቦታ (Drop-off)</label>
+          <input id="rideDropoff" name="dropoff" type="text" required placeholder="ለምሳሌ፡ ቦሌ" />
+        </div>
+        <button class="btn" type="submit">ጉዞ ይጠይቁ</button>
+      </form>
+    </section>
+
+    <section id="driver-register" class="card">
+      <h2>የአሽከርካሪ ምዝገባ (Driver Registration)</h2>
+      <div id="driverBanner" class="status-banner" role="status"></div>
+      <form id="driverForm">
+        <div class="field">
+          <label for="driverName">የአሽከርካሪ ሙሉ ስም</label>
+          <input id="driverName" name="driverName" type="text" required placeholder="ለምሳሌ፡ ታደሰ በቀለ" />
+        </div>
+        <div class="field">
+          <label for="driverPhone">ስልክ ቁጥር</label>
+          <input id="driverPhone" name="driverPhone" type="tel" required placeholder="09..." />
+        </div>
+        <div class="field">
+          <label for="vehicleType">የተሽከርካሪ ዓይነት (Vehicle Type)</label>
+          <select id="vehicleType" name="vehicleType" required>
+            <option value="Sedan / ሴዳን">Sedan / ሴዳን</option>
+            <option value="Minivan / ሚኒባስ">Minivan / ሚኒባስ</option>
+            <option value="SUV / ኤስ.ዩ.ቪ">SUV / ኤስ.ዩ.ቪ</option>
+            <option value="Bajaj / ባጃጅ">Bajaj / ባጃጅ</option>
+            <option value="Motorcycle / ሞተርሳይክል">Motorcycle / ሞተርሳይክል</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="plateNumber">የሰሌዳ ቁጥር (Plate Number)</label>
+          <input id="plateNumber" name="plateNumber" type="text" required placeholder="ለምሳሌ፡ 3-A12345 AA" />
+        </div>
+        <div class="field">
+          <label for="licenseNumber">መንጃ ፈቃድ ቁጥር (License Number)</label>
+          <input id="licenseNumber" name="licenseNumber" type="text" required placeholder="ለምሳሌ፡ DL-123456" />
+        </div>
+        <div class="field">
+          <label for="driverPhoto">የመንጃ ፈቃድ ወይም የአሽከርካሪ ፎቶ (Photo)</label>
+          <input id="driverPhoto" name="driverPhoto" type="file" accept="image/*" required />
+          <img id="photoPreview" class="driver-thumb" alt="የፎቶ ቅድመ እይታ" style="display:none;" />
+        </div>
+        <button class="btn btn-blue" type="submit">እንደ አሽከርካሪ ይመዝገቡ</button>
+      </form>
+    </section>
+
+    <section id="admin" class="card">
+      <h2>የአስተዳደር ክፍል — የይለፍ ቃል ያስገቡ</h2>
+      <div id="admin-status" class="status-banner" role="status"></div>
+      <form id="adminLoginForm" class="assign-row" style="margin-bottom: 14px;">
+        <input id="adminPassword" type="password" required placeholder="የአስተዳደር የይለፍ ቃል (Password)" />
+        <button class="btn btn-blue btn-sm" type="submit">ግባ</button>
+      </form>
+
+      <div id="adminPanel" style="display:none;">
+        <h3>የጉዞ ጥያቄዎች</h3>
+        <div id="rides-list"></div>
+
+        <h3>የተመዘገቡ አሽከርካሪዎች</h3>
+        <div id="driversList"></div>
+      </div>
+    </section>
+
+    <div class="footer">
+      © 2026 Guzo Plus (ጉዞ ፕላስ) — https://guzo-plus-05wo.onrender.com/
+    </div>
+  </div>
+
+  <script>
+    let driversCache = [];
+    let compressedPhotoData = "";
+    let adminUnlocked = false;
+
+    function setBanner(id, message, isError = false) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.textContent = message;
+      el.className = "status-banner show " + (isError ? "status-error" : "status-success");
+    }
+
+    const photoInput = document.getElementById("driverPhoto");
+    const photoPreview = document.getElementById("photoPreview");
+
+    if (photoInput) {
+      photoInput.addEventListener("change", (e) => {
+        const file = e.target.files && e.target.files[0];
+        if (!file) {
+          compressedPhotoData = "";
+          if (photoPreview) {
+            photoPreview.style.display = "none";
+            photoPreview.removeAttribute("src");
+          }
+          return;
+        }
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          const img = new Image();
+          img.onload = () => {
+            const canvas = document.createElement("canvas");
+            const maxW = 500;
+            const scale = img.width > maxW ? maxW / img.width : 1;
+            canvas.width = Math.round(img.width * scale);
+            canvas.height = Math.round(img.height * scale);
+            const ctx = canvas.getContext("2d");
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+            compressedPhotoData = canvas.toDataURL("image/jpeg", 0.72);
+            if (photoPreview) {
+              photoPreview.src = compressedPhotoData;
+              photoPreview.style.display = "block";
+            }
+          };
+          img.src = ev.target.result;
+        };
+        reader.readAsDataURL(file);
+      });
+    }
+
+    document.getElementById("rideForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const payload = {
+        fullName: document.getElementById("rideName").value.trim(),
+        phone: document.getElementById("ridePhone").value.trim(),
+        pickup: document.getElementById("ridePickup").value.trim(),
+        dropoff: document.getElementById("rideDropoff").value.trim()
+      };
+      try {
+        const res = await fetch("/api/rides", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.message || "የጉዞ ጥያቄ ማስገባት አልተቻለም።");
+        setBanner("rideBanner", data.message || "የጉዞ ጥያቄዎ በስኬት ተልኳል።", false);
+        e.target.reset();
+        if (adminUnlocked) await renderRidesWithDrivers();
+      } catch (err) {
+        setBanner("rideBanner", err.message || "ስህተት ተፈጥሯል።", true);
+      }
+    });
+
+    document.getElementById("driverForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      if (!compressedPhotoData) {
+        setBanner("driverBanner", "እባክዎ የመንጃ ፈቃድ ወይም የአሽከርካሪ ፎቶ ይምረጡ።", true);
+        return;
+      }
+      const payload = {
+        driverName: document.getElementById("driverName").value.trim(),
+        driverPhone: document.getElementById("driverPhone").value.trim(),
+        vehicleType: document.getElementById("vehicleType").value,
+        plateNumber: document.getElementById("plateNumber").value.trim(),
+        licenseNumber: document.getElementById("licenseNumber").value.trim(),
+        driverPhoto: compressedPhotoData
+      };
+      try {
+        const res = await fetch("/api/drivers", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.message || "ምዝገባ አልተሳካም።");
+        setBanner("driverBanner", data.message || "እንደ አሽከርካሪ በስኬት ተመዝግበዋል።", false);
+        e.target.reset();
+        compressedPhotoData = "";
+        if (photoPreview) {
+          photoPreview.style.display = "none";
+          photoPreview.removeAttribute("src");
+        }
+        if (adminUnlocked) await renderRidesWithDrivers();
+      } catch (err) {
+        setBanner("driverBanner", err.message || "ስህተት ተፈጥሯል።", true);
+      }
+    });
+
+    document.getElementById("adminLoginForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const password = document.getElementById("adminPassword").value;
+      try {
+        const res = await fetch("/api/admin/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ password })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.message || "የይለፍ ቃል የተሳሳተ ነው።");
+        adminUnlocked = true;
+        document.getElementById("adminPanel").style.display = "block";
+        setBanner("admin-status", data.message || "በስኬት ገብተዋል።", false);
+        await renderRidesWithDrivers();
+      } catch (err) {
+        setBanner("admin-status", err.message || "መግባት አልተቻለም።", true);
+      }
+    });
+
+    async function loadDrivers() {
+      const res = await fetch("/api/drivers");
+      if (!res.ok) throw new Error("የአሽከርካሪዎችን ዝርዝር ማምጣት አልተቻለም።");
+      const data = await res.json();
+      driversCache = Array.isArray(data) ? data : (data.drivers || []);
+    }
+
+    function buildDriverOptions(selectedDriverId) {
+      if (!driversCache.length) {
+        return '<option value="">የተመዘገበ ሾፌር የለም</option>';
+      }
+      const placeholder = '<option value="">-- ሾፌር ይምረጡ --</option>';
+      const options = driversCache.map((d) => {
+        const id = d.id || d._id;
+        const name = d.fullName || d.driverName || "ስም የለም";
+        const license = d.licenseNumber ? `ፈቃድ፡ ${d.licenseNumber}` : "";
+        const plate = d.plateNumber || "";
+        const label = [name, license, plate].filter(Boolean).join(" • ");
+        const selected = String(id) === String(selectedDriverId) ? "selected" : "";
+        return `<option value="${id}" ${selected}>${label}</option>`;
+      });
+      return placeholder + options.join("");
+    }
+
+    async function assignDriver(rideId, selectEl, btnEl) {
+      const driverId = selectEl.value;
+      if (!driverId) {
+        setBanner("admin-status", "እባክዎ መጀመሪያ አሽከርካሪ ይምረጡ።", true);
+        return;
+      }
+      const origText = btnEl.textContent;
+      btnEl.disabled = true;
+      btnEl.textContent = "እየተመደበ ነው...";
+      try {
+        const res = await fetch(`/api/rides/${encodeURIComponent(rideId)}/assign-driver`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ driverId })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.message || "ሾፌር መመደብ አልተሳካም።");
+        setBanner("admin-status", data.message || "አሽከርካሪው በስኬት ተመድቧል።", false);
+        await renderRidesWithDrivers();
+      } catch (err) {
+        setBanner("admin-status", err.message || "ስህተት ተፈጥሯል።", true);
+      } finally {
+        btnEl.disabled = false;
+        btnEl.textContent = origText;
+      }
+    }
+
+    function renderDriversList() {
+      const listEl = document.getElementById("driversList");
+      if (!listEl) return;
+      if (!driversCache.length) {
+        listEl.innerHTML = '<p class="muted">ምንም የተመዘገበ አሽከርካሪ የለም።</p>';
+        return;
+      }
+      listEl.innerHTML = driversCache.map((d) => {
+        const name = d.fullName || d.driverName || "አሽከርካሪ";
+        const phone = d.phone || d.driverPhone || "";
+        const vehicle = d.vehicleType || "";
+        const plate = d.plateNumber || "";
+        const license = d.licenseNumber || "አልተገለጸም";
+        const photoHtml = d.driverPhoto
+          ? `<img src="${d.driverPhoto}" alt="${name}" class="driver-thumb" />`
+          : "";
+        return `
+          <div class="item-box">
+            <div><strong>${name}</strong> ${phone ? `(${phone})` : ""}</div>
+            <div>መኪና፦ ${vehicle} • ሰሌዳ፦ ${plate}</div>
+            <div>መንጃ ፈቃድ ቁጥር፦ <strong>${license}</strong></div>
+            ${photoHtml}
+          </div>
+        `;
+      }).join("");
+    }
+
+    async function renderRidesWithDrivers() {
+      const container = document.getElementById("rides-list");
+      if (!container) return;
+
+      await loadDrivers();
+      renderDriversList();
+
+      const res = await fetch("/api/rides");
+      if (!res.ok) {
+        setBanner("admin-status", "የጉዞ ጥያቄዎችን ማምጣት አልተቻለም።", true);
+        return;
+      }
+      const data = await res.json();
+      const rides = Array.isArray(data) ? data : (data.rides || []);
+
+      if (!rides.length) {
+        container.innerHTML = '<p class="muted">ምንም የጉዞ ጥያቄ አልተገኘም።</p>';
+        return;
+      }
+
+      container.innerHTML = "";
+      rides.forEach((ride) => {
+        const rideId = ride.id || ride._id;
+        const passenger = ride.fullName || ride.name || "ተሳፋሪ";
+        const phone = ride.phone || "";
+        const pickup = ride.pickup || "";
+        const dropoff = ride.dropoff || "";
+        const assignedName = ride.assignedDriverName || "አልተመደበም";
+        const assignedLicense = ride.assignedLicenseNumber ? ` (ፈቃድ፡ ${ride.assignedLicenseNumber})` : "";
+
+        const card = document.createElement("div");
+        card.className = "item-box";
+        card.innerHTML = `
+          <div><strong>${passenger}</strong> ${phone ? `(${phone})` : ""}</div>
+          <div>መነሻ፦ ${pickup} → መድረሻ፦ ${dropoff}</div>
+          <div>የተመደበ ሾፌር፦ <strong>${assignedName}</strong>${assignedLicense}</div>
+          <div class="assign-row">
+            <select class="driver-select">
+              ${buildDriverOptions(ride.driverId)}
+            </select>
+            <button type="button" class="btn btn-sm assign-btn">መድብ</button>
+          </div>
+        `;
+
+        const selectEl = card.querySelector(".driver-select");
+        const btnEl = card.querySelector(".assign-btn");
+        btnEl.addEventListener("click", () => assignDriver(rideId, selectEl, btnEl));
+        container.appendChild(card);
+      });
+    }
+
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", () => {
+        navigator.serviceWorker.register("/sw.js").catch(() => {});
+      });
+    }
+  </script>
+</body>
+</html>
