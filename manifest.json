@@ -1,4 +1,3 @@
-
 {
   "name": "ጉዞ ፕላስ • Guzo Plus",
   "short_name": "ጉዞ ፕላስ",
@@ -9,5 +8,12 @@
   "lang": "am",
   "background_color": "#f7f5fc",
   "theme_color": "#7bed85",
-  "icons": [1795448273390.jpg
+  "icons": [
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
 }
