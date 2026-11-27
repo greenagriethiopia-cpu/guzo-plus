@@ -348,6 +348,38 @@ app.post("/api/drivers", async (req, res) => {
   }
 });
 
+app.get("/manifest.json", (req, res) => {
+  const candidates = [
+    path.join(publicDir, "manifest.json"),
+    path.join(__dirname, "manifest.json")
+  ];
+  const existing = candidates.find((p) => fs.existsSync(p));
+  if (existing) return res.sendFile(existing);
+  res.type("application/manifest+json").json({
+    name: "ጉዞ ፕላስ • Guzo Plus",
+    short_name: "ጉዞ ፕላስ",
+    start_url: "/",
+    scope: "/",
+    display: "standalone",
+    background_color: "#f4f7f5",
+    theme_color: "#1b7f4b",
+    icons: []
+  });
+});
+
+app.get("/sw.js", (req, res) => {
+  const candidates = [
+    path.join(publicDir, "sw.js"),
+    path.join(__dirname, "sw.js")
+  ];
+  const existing = candidates.find((p) => fs.existsSync(p));
+  if (existing) return res.sendFile(existing);
+  res.type("application/javascript").send(`
+    self.addEventListener("install", () => self.skipWaiting());
+    self.addEventListener("activate", (event) => event.waitUntil(self.clients.claim()));
+  `);
+});
+
 app.get(["/", "/admin", "/index.html"], (req, res) => {
   const candidates = [
     path.join(publicDir, "index.html"),
