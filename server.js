@@ -353,8 +353,8 @@ app.get(["/", "/admin", "/index.html"], (req, res) => {
     return res.sendFile(existing);
   }
   res.status(404).send("index.html not found");
-});
-const  = process.env.MONGODB_URI || process.env.MONGO_URI || "";
+
+const  = process.env.MONGOD
 const client = new MongoClient(MONGODB_URI, {
   family: 4,
   serverSelectionTimeoutMS: 30000,
