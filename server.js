@@ -354,6 +354,13 @@ app.get(["/", "/admin", "/index.html"], (req, res) => {
   }
   res.status(404).send("index.html not found");
 });
+const MONGODB_URI = process.env.MONGODB_URI || process.env.MONGO_URI || "";
+const client = new MongoClient(MONGODB_URI, {
+  family: 4,
+  serverSelectionTimeoutMS: 30000,
+  connectTimeoutMS: 45000,
+  socketTimeoutMS: 45000
+});
 
 initDatabase().then(() => {
   app.listen(PORT, () => {
