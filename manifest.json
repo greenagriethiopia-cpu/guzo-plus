@@ -1,14 +1,22 @@
 {
+  "id": "/",
   "name": "ጉዞ ፕላስ • Guzo Plus",
   "short_name": "ጉዞ ፕላስ",
   "description": "የተሳፋሪ የጉዞ ጥያቄ እና የሾፌር ምዝገባ አገልግሎት",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
+  "orientation": "portrait",
   "lang": "am",
   "background_color": "#f7f5fc",
   "theme_color": "#7bed85",
   "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
     {
       "src": "/icon-512.png",
       "sizes": "512x512",
