@@ -224,7 +224,6 @@ async function createDriver(driverInput) {
   return newDriver;
 }
 
-// --- Telegram Bot Helpers & Webhook ---
 async function sendTelegramMessage(chatId, text) {
   if (!TELEGRAM_API || !chatId) return;
   try {
@@ -307,7 +306,6 @@ async function registerTelegramWebhook() {
   }
 }
 
-// --- API Routes ---
 app.get("/api/health", (req, res) => {
   res.json({
     ok: true,
@@ -323,3 +321,173 @@ app.post("/api/admin/login", (req, res) => {
   if (password && password === ADMIN_PASSWORD) {
     return res.json({ ok: true, message: "ገብተዋል" });
   }
+  return res.status(401).json({ ok: false, message: "የይለፍ ቃል የተሳሳተ ነው" });
+});
+
+app.get("/api/rides", async (req, res) => {
+  try {
+    const rides = await getAllRides();
+    res.json({ ok: true, rides });
+  } catch (err) {
+    res.status(500).json({ ok: false, message: "የጉዞ ዝርዝር ማምጣት አልተቻለም" });
+  }
+});
+
+app.post("/api/rides", async (req, res) => {
+  try {
+    const body = req.body || {};
+    const fullName = String(body.fullName || "").trim();
+    const phone = String(body.phone || "").trim();
+    const pickup = String(body.pickup || "").trim();
+    const dropoff = String(body.dropoff || "").trim();
+
+    if (!fullName || !phone || !pickup || !dropoff) {
+      return res
+        .status(400)
+        .json({ ok: false, message: "እባክዎ ሁሉንም የጉዞ መረጃዎች በትክክል ይሙሉ" });
+    }
+
+    const ride = await createRide({ fullName, phone, pickup, dropoff });
+    res.status(201).json({ ok: true, message: "የጉዞ ጥያቄ ተመዝግቧል", ride });
+  } catch (err) {
+    res.status(500).json({ ok: false, message: "የጉዞ ጥያቄ መመዝገብ አልተቻለም" });
+  }
+});
+
+app.post("/api/rides/:id/assign-driver", async (req, res) => {
+  try {
+    const rideId = String(req.params.id || "").trim();
+    const driverId = String((req.body && req.body.driverId) || "").trim();
+
+    if (!rideId || !driverId) {
+      return res
+        .status(400)
+        .json({ ok: false, message: "የጉዞ መለያ እና የሾፌር መለያ ያስፈልጋል" });
+    }
+
+    const result = await assignDriverToRide(rideId, driverId);
+    if (result.error) {
+      return res.status(result.status).json({ ok: false, message: result.error });
+    }
+
+    res.json({ ok: true, message: "ሾፌር ተመድቧል", ride: result.ride });
+  } catch (err) {
+    res.status(500).json({ ok: false, message: "ሾፌር መመደብ አልተቻለም" });
+  }
+});
+
+app.get("/api/drivers", async (req, res) => {
+  try {
+    const drivers = await getAllDrivers();
+    res.json({ ok: true, drivers });
+  } catch (err) {
+    res.status(500).json({ ok: false, message: "የሾፌሮች ዝርዝር ማምጣት አልተቻለም" });
+  }
+});
+
+app.post("/api/drivers", async (req, res) => {
+  try {
+    const body = req.body || {};
+    const fullName = String(body.fullName || body.driverName || "").trim();
+    const phone = String(body.phone || body.driverPhone || "").trim();
+    const vehicleType = String(body.vehicleType || "").trim();
+    const plateNumber = String(body.plateNumber || "").trim();
+    const licenseNumber = String(body.licenseNumber || "").trim();
+    const driverPhoto = String(body.driverPhoto || "").trim();
+
+    if (!fullName || !phone || !vehicleType || !plateNumber || !licenseNumber) {
+      return res.status(400).json({
+        ok: false,
+        message: "እባክዎ ሙሉ ስም፣ ስልክ፣ የተሽከርካሪ አይነት፣ ታርጋ እና ፈቃድ ቁጥር ያስገቡ",
+      });
+    }
+
+    if (!driverPhoto) {
+      return res
+        .status(400)
+        .json({ ok: false, message: "እባክዎ የሾፌር ፎቶ ያስገቡ" });
+    }
+
+    const driver = await createDriver({
+      fullName,
+      phone,
+      vehicleType,
+      plateNumber,
+      licenseNumber,
+      driverPhoto,
+    });
+
+    res.status(201).json({ ok: true, message: "አዲስ አሽከርካሪ በስኬት ተመዝግቧል", driver });
+  } catch (err) {
+    res.status(500).json({ ok: false, message: "የአሽከርካሪ ምዝገባ አልተቻለም" });
+  }
+});
+
+app.get("/manifest.json", (req, res) => {
+  const candidates = [
+    path.join(publicDir, "manifest.json"),
+    path.join(__dirname, "manifest.json"),
+  ];
+  const existing = candidates.find((p) => fs.existsSync(p));
+  if (existing) return res.sendFile(existing);
+
+  res.type("application/manifest+json").json({
+    id: "/",
+    name: "ጉዞ ፕላስ • Guzo Plus",
+    short_name: "ጉዞ ፕላስ",
+    description: "የተሳፋሪ የጉዞ ጥያቄ እና የሾፌር ምዝገባ አገልግሎት",
+    start_url: "/",
+    scope: "/",
+    display: "standalone",
+    orientation: "portrait",
+    lang: "am",
+    background_color: "#f7f5fc",
+    theme_color: "#7bed85",
+    icons: [
+      {
+        src: "/icon-192.png",
+        sizes: "192x192",
+        type: "image/png",
+        purpose: "any",
+      },
+      {
+        src: "/icon-512.png",
+        sizes: "512x512",
+        type: "image/png",
+        purpose: "any maskable",
+      },
+    ],
+  });
+});
+
+app.get("/sw.js", (req, res) => {
+  const candidates = [
+    path.join(publicDir, "sw.js"),
+    path.join(__dirname, "sw.js"),
+  ];
+  const existing = candidates.find((p) => fs.existsSync(p));
+  if (existing) return res.sendFile(existing);
+
+  res.type("application/javascript").send(`
+    self.addEventListener("install", () => self.skipWaiting());
+    self.addEventListener("activate", (event) => event.waitUntil(self.clients.claim()));
+  `);
+});
+
+app.get(["/", "/admin", "/index.html"], (req, res) => {
+  const candidates = [
+    path.join(publicDir, "index.html"),
+    path.join(__dirname, "index.html"),
+  ];
+  const existing = candidates.find((p) => fs.existsSync(p));
+  if (existing) {
+    return res.sendFile(existing);
+  }
+  res.status(404).send("index.html not found");
+});
+
+app.listen(PORT, () => {
+  console.log(`Guzo Plus server listening on port ${PORT}`);
+  initDatabase();
+  registerTelegramWebhook();
+});
